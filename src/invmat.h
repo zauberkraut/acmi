@@ -10,7 +10,7 @@
 #include <string.h>
 #include <time.h>
 
-static const int MAX_MAT_DIM = 20000;
+static const int MAX_MAT_DIM = 32768;
 
 typedef struct {
   const char* path;
@@ -18,82 +18,65 @@ typedef struct {
   bool binary;
   bool symmetric;
   bool skew;
-  unsigned n;
-  unsigned nEntries; // valid only if sparse
-  unsigned nNonzero; // ''
+  int n;
+  int nEntries; // valid only if sparse
+  int nNonzero; // ''
   double sparsity;
-  uint64_t size;
+  int64_t size;
 } MatInfo;
 
 typedef struct {
-  unsigned n;
-  uint64_t n2;
-  uint64_t size;
+  int n;
+  int64_t n2;
+  int64_t size;
   float* p;
-  bool device;
+  bool dev;
 } Mat_;
 typedef Mat_* Mat;
 
-typedef enum {CPU_IMPL, CUBLAS_IMPL, CUDA_IMPL, LU_IMPL} Impl;
+typedef enum {BLAS_IMPL, CUBLAS_IMPL, LU_IMPL} Impl;
 
 static inline double mibibytes(uint64_t size) {
   return (double)size/(1 << 20);
 }
-
-extern uint64_t cpuTotalMatBytes;
-extern uint64_t cuTotalMatBytes;
 
 void setVerbose(bool b);
 void debug(const char* msg, ...);
 void warn(const char* msg, ...);
 void fatal(const char* msg, ...);
 void writeMat(FILE* fout, Mat m);
+void saveMat(const char* path, Mat m);
 MatInfo readMatInfo(const char* path);
-Mat loadMat(MatInfo info);
-Mat randIntMat(unsigned n);
-Mat randRealMat(unsigned n);
+void loadMat(Mat mA, MatInfo info);
+void genRandIntMat(Mat mA, const char* outPath);
+void genRandRealMat(Mat mA, const char* outPath);
 
-extern Mat (*newMat)(unsigned n);
-Mat emptyMat(unsigned n);
-Mat zeroMat(unsigned n);
+Mat hostNewMat(int n);
+Mat devNewMat(int n);
 void clearMat(Mat m);
 void freeMat(Mat m);
-void bound(Mat m, int row, int col);
-float (*elem)(Mat m, int row, int col);
-void (*setElem)(Mat m, int row, int col, float e);
-void init(unsigned n, Impl impl, bool quadConv);
-void shutDown();
-float measureAR(Mat mA, Mat mR);
-float invert(Mat mA, Mat mR, float maxError, int maxStep);
+float elem(Mat m, int row, int col);
+void setElem(Mat m, int row, int col, float e);
 
-Mat cpuNewMat(unsigned n);
-void cpuFreeMat(Mat m);
-Mat cpuCopyMat(Mat m);
-float cpuElem(Mat m, int row, int col);
-void cpuSetElem(Mat m, int row, int col, float e);
-void cpuGemm(float alpha, Mat mA, Mat mB, float beta, Mat mC);
-void cpuGeam(float alpha, Mat mA, float beta, Mat mB, Mat mC);
-float cpuNorm(Mat mA);
+extern void (*gemm)(float alpha, Mat mA, Mat mB, float beta, Mat mC);
+extern void (*geam)(float alpha, Mat mA, float beta, Mat mB, Mat mC);
+extern float (*norm)(Mat mA);
+float invert(Mat mA, Mat mR, float maxError, int maxStep, bool quadConv);
 
-void cublInit(unsigned n);
-void cublShutDown();
-void cublGemm(float alpha, Mat mA, Mat mB, float beta, Mat mC);
-void cublGeam(float alpha, Mat mA, float beta, Mat mB, Mat mC);
-float cublNorm(Mat mA);
-float luInvert(Mat mA, Mat mR);
+void blasGemm(float alpha, Mat mA, Mat mB, float beta, Mat mC);
+void blasGeam(float alpha, Mat mA, float beta, Mat mB, Mat mC);
+float blasNorm(Mat mA);
 
 void* cuMalloc(size_t size);
 void cuFree(void* p);
 void cuClear(void* p, size_t size);
 void cuUpload(void* devDst, const void* hostSrc, size_t size);
 void cuDownload(void* hostDst, const void* devSrc, size_t size);
-Mat cuNewMat(unsigned n);
-void cuFreeMat(Mat m);
-Mat cuCopyMat(Mat m);
-float cuElem(Mat m, int row, int col);
-void cuSetElem(Mat m, int row, int col, float e);
-void cuGemm(float alpha, Mat mA, Mat mB, float beta, Mat mC);
-void cuGeam(float alpha, Mat mA, float beta, Mat mB, Mat mC);
-float cuNorm(Mat mA);
+void cublInit(int n);
+void cublShutDown();
+void cublGemm(float alpha, Mat mA, Mat mB, float beta, Mat mC);
+void cublGeam(float alpha, Mat mA, float beta, Mat mB, Mat mC);
+float cublNorm(Mat mA);
+float luInvert(Mat mA, Mat mR);
 
 #endif

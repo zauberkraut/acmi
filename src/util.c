@@ -1,3 +1,5 @@
+// util.c
+
 #include <math.h>
 #include <stdarg.h>
 #include "invmat.h"
@@ -102,7 +104,7 @@ MatInfo readMatInfo(const char* path) {
   return info;
 }
 
-Mat loadMat(MatInfo info) {
+void loadMat(Mat mA, MatInfo info) {
   FILE* f = fopen(info.path, "r");
   debug("loading %s ...", info.path);
 
@@ -112,8 +114,7 @@ Mat loadMat(MatInfo info) {
   if (info.sparse) mm_read_mtx_crd_size(f, &dummy, &dummy, &dummy);
   else             mm_read_mtx_array_size(f, &dummy, &dummy);
 
-  Mat mA = newMat(info.n);
-  Mat hostA = mA->device ? cpuNewMat(info.n) : mA;
+  Mat hostA = mA->dev ? hostNewMat(info.n) : mA;
   clearMat(hostA);
 
   if (info.sparse) {
@@ -127,10 +128,10 @@ Mat loadMat(MatInfo info) {
       if (fscanf(f, parseStr, &row, &col, &e) != paramsPerElem) {
         fatal("error reading element %d from %s", i + 1, info.path);
       }
-      cpuSetElem(hostA, row - 1, col - 1, e);
+      setElem(hostA, row - 1, col - 1, e);
 
       if (info.symmetric && row != col) {
-        cpuSetElem(hostA, info.n - row, info.n - col, symmSign*e);
+        setElem(hostA, info.n - row, info.n - col, symmSign*e);
       }
     }
   } else {
@@ -138,19 +139,17 @@ Mat loadMat(MatInfo info) {
       for (int row = 0; row < info.n; ++row) {
         float e;
         fscanf(f, "%f", &e);
-        cpuSetElem(hostA, row, col, e);
+        setElem(hostA, row, col, e);
       }
     }
   }
 
   fclose(f);
 
-  if (mA->device) {
+  if (mA->dev) {
     cuUpload(mA->p, hostA->p, hostA->size);
     freeMat(hostA);
   }
-
-  return mA;
 }
 
 void writeMat(FILE* fout, Mat mA) {
@@ -161,8 +160,8 @@ void writeMat(FILE* fout, Mat mA) {
   const int n = mA->n;
 
   Mat hostA;
-  if (mA->device) {
-    hostA = cpuNewMat(n);
+  if (mA->dev) {
+    hostA = hostNewMat(n);
     cuDownload(hostA->p, mA->p, mA->size);
   } else {
     hostA = mA;
@@ -171,7 +170,7 @@ void writeMat(FILE* fout, Mat mA) {
   int nNonzero = 0;
   for (int row = 0; row < n; ++row) {
     for (int col = 0; col < n; ++col) {
-      if (fabsf(cpuElem(hostA, row, col)) > 0) ++nNonzero;
+      if (fabsf(elem(hostA, row, col)) > 0) ++nNonzero;
     }
   }
   double sparsity = (double)nNonzero/hostA->n2;
@@ -189,7 +188,7 @@ void writeMat(FILE* fout, Mat mA) {
 
     for (int col = 0; col < n; ++col) {
       for (int row = 0; row < n; ++row) {
-        float e = cpuElem(hostA, row, col);
+        float e = elem(hostA, row, col);
         if (fabsf(e) > 0) {
           fprintf(fout, "%d %d %g\n", row + 1, col + 1, e);
         }
@@ -199,17 +198,27 @@ void writeMat(FILE* fout, Mat mA) {
     mm_write_mtx_array_size(fout, n, n);
     for (int col = 0; col < n; ++col) {
       for (int row = 0; row < n; ++row) {
-        fprintf(fout, "%g\n", cpuElem(hostA, row, col));
+        fprintf(fout, "%g\n", elem(hostA, row, col));
       }
     }
   }
 
-  if (mA->device) freeMat(hostA);
+  if (mA->dev) freeMat(hostA);
 }
 
-Mat randIntMat(unsigned n) {
-  Mat mA = newMat(n);
-  Mat hostA = mA->device ? cpuNewMat(n) : mA;
+void saveMat(const char* path, Mat mA) {
+  if (path) {
+    if (mA->dev) fatal("only host matrices may be saved");
+    FILE* f = fopen(path, "w");
+    if (!f) fatal("couldn't open %s to write random matrix", path);
+    writeMat(f, mA);
+    fclose(f);
+  }
+}
+
+void genRandIntMat(Mat mA, const char* path) {
+  const int n = mA->n;
+  Mat hostA = mA->dev ? hostNewMat(n) : mA;
 
   for (int row = 0; row < n; ++row) {
     int64_t rowSum = 0;
@@ -219,26 +228,25 @@ Mat randIntMat(unsigned n) {
       if (row != col) {
         int signE = rand() % 2 ? 1 : -1;
         int r = rand() % n;
-        cpuSetElem(hostA, row, col, signE*r);
+        setElem(hostA, row, col, signE*r);
         rowSum += r;
       }
     }
 
     ++rowSum;
-    cpuSetElem(hostA, row, row, /*signD*/rowSum);
+    setElem(hostA, row, row, /*signD*/rowSum);
   }
 
-  if (mA->device) {
+  saveMat(path, hostA);
+  if (mA->dev) {
     cuUpload(mA->p, hostA->p, hostA->size);
     freeMat(hostA);
   }
-
-  return mA;
 }
 
-Mat randRealMat(unsigned n) {
-  Mat mA = newMat(n);
-  Mat hostA = mA->device ? cpuNewMat(n) : mA;
+void genRandRealMat(Mat mA, const char* path) {
+  const int n = mA->n;
+  Mat hostA = mA->dev ? hostNewMat(n) : mA;
 
   for (int row = 0; row < n; ++row) {
     uint64_t rowSum = 0;
@@ -248,19 +256,18 @@ Mat randRealMat(unsigned n) {
       if (row != col) {
         int signE = rand() % 2 ? 1 : -1;
         int r = rand();
-        cpuSetElem(hostA, row, col, signE*r/(double)RAND_MAX*n);
+        setElem(hostA, row, col, signE*r/(double)RAND_MAX*n);
         rowSum += r;
       }
     }
 
     double d = rowSum/(double)RAND_MAX*n + 1;
-    cpuSetElem(hostA, row, row, /*signD**/d);
+    setElem(hostA, row, row, /*signD**/d);
   }
 
-  if (mA->device) {
+  saveMat(path, hostA);
+  if (mA->dev) {
     cuUpload(mA->p, hostA->p, hostA->size);
     freeMat(hostA);
   }
-
-  return mA;
 }

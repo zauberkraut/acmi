@@ -8,42 +8,48 @@
 #include <unistd.h>
 #include "invmat.h"
 
-const float DEF_MAX_ERROR = 0.0001;
-const int DEF_MAX_STEP = 20;
 const int MAX_PATH_LEN = 255;
+const Impl DEFAULT_IMPL = CUBLAS_IMPL;
+const float DEFAULT_MAX_ERROR = 0.0001;
+const int DEFAULT_MAX_STEP = 20;
 
 extern char *optarg;
 extern int optind, opterr, optopt;
 
 void usage() {
-  fatal("GPU-Parallelized Matrix Inverter, J. Treadwell, 2016\n"
+  fatal("GPU-Parallelized Matrix Inverter, J. Treadwell, 2016\n\n"
         "Usage:\n  invmat [options] <input matrix path>\n\n"
         "Options:\n"
-        "  -h                   These instructions\n"
-        "  -q                   Disable logging\n"
-        "  -i                   Print matrix file info and exit\n"
-        "  -t                   Test mode: don't output the computed inverse\n"
-        "  -2                   Employ quadratic instead of cubic convergence\n"
-        "  -m <cpu|cublas|cuda> Select implementation to run (default: cpu)\n"
-        "  -e <real>            Set max inversion error (default: %g)\n"
-        "  -n <count>           Set max iteration to compute (default: %d)\n"
-        "  -r <N> [-o <path>]   Invert a random NxN integer matrix\n"
-        "  -R <N> [-o <path>]   Invert a random NxN real matrix\n"
-        "  -s <32-bit hex>      Specify PRNG seed\n\n"
+        "  -h          These instructions\n"
+        "  -q          Disable logging\n"
+        "  -i          Print matrix file info and exit\n"
+        "  -t          Test mode: don't output the computed inverse\n"
+        "  -2          Employ quadratic instead of cubic convergence\n"
+        "  -m <mode>   Select implementation to run (default: cublas)\n"
+        "  -p <N>      Use N-bit floating-point matrix elements\n"
+        "  -e <real>   Set max inversion error (default: %g)\n"
+        "  -n <count>  Set max iteration to compute (default: %d)\n"
+        "  -r <N>      Invert a random NxN integer matrix\n"
+        "  -R <N>      Invert a random NxN real matrix\n"
+        "  -o <path>   Set output path for uninverted random matrix\n"
+        "  -s <hex>    Set PRNG seed\n\n"
         "MatrixMarket files are accepted as input.\n"
-        "Computed inverses are written in MatrixMarket format to stdout.\n"
-        "Random modes take an optional path to which to write the original,\n"
-        "randomly-generated matrix and don't take an input file.",
-        DEF_MAX_ERROR, DEF_MAX_STEP);
+        "Computed inverses are written in MatrixMarket format to stdout.\n\n"
+        "Modes available through -m option:\n"
+        "  blas    Pure software BLAS implementation; no Nvidia GPU needed\n"
+        "  cublas  Nvidia CUDA BLAS implementation\n"
+        "  lu      Nvidia LU-factorization inversion without iteration\n\n"
+        "Use the -p option to set floating-point precision to 16, 32 or 64-bits.",
+        DEFAULT_MAX_ERROR, DEFAULT_MAX_STEP);
 }
 
 int main(const int argc, char* const argv[]) {
   bool quadConv = false;
   bool infoMode = false;
   bool testMode = false;
-  Impl impl = CPU_IMPL;
-  float maxError = DEF_MAX_ERROR;
-  int maxStep = DEF_MAX_STEP;
+  Impl impl = DEFAULT_IMPL;
+  float maxError = DEFAULT_MAX_ERROR;
+  int maxStep = DEFAULT_MAX_STEP;
   int randDim = 0;
   bool randRealMode = false;
   char* randOutPath = 0;
@@ -65,14 +71,14 @@ int main(const int argc, char* const argv[]) {
       case '2': quadConv = true; break;
 
       case 'm': {
-        if (!strncmp(optarg, "cublas", 8)) {
+        if (!strncmp(optarg, "blas", 8)) {
+          impl = BLAS_IMPL;
+        } else if (!strncmp(optarg, "cublas", 8)) {
           impl = CUBLAS_IMPL;
-        } else if (!strncmp(optarg, "cuda", 8)) {
-          impl = CUDA_IMPL;
         } else if (!strncmp(optarg, "lu", 8)) {
           impl = LU_IMPL;
-        } else if (strncmp(optarg, "cpu", 8)) {
-          fatal("implementation must be one of \"cpu\", \"cublas\" or \"cuda\"");
+        } else {
+          fatal("supported modes are: \"blas\", \"cublas\", \"lu\"");
         }
         break;
       }
@@ -150,23 +156,18 @@ int main(const int argc, char* const argv[]) {
     if (infoMode) fatal("info mode doesn't apply to randomly-generated "
                         "matrices");
 
+    mA = impl == BLAS_IMPL ? hostNewMat(randDim) : devNewMat(randDim);
+
     if (!prngSeed) prngSeed = time(0);
     debug("seeding PRNG with %x", prngSeed);
     srand(prngSeed);
 
-    init(randDim, impl, quadConv);
-
     debug("generating random %dx%d %s matrix...", randDim, randDim,
           randRealMode ? "real" : "integer");
-    mA = randRealMode ? randRealMat(randDim) : randIntMat(randDim);
+    if (randRealMode) genRandRealMat(mA, randOutPath);
+    else              genRandIntMat(mA, randOutPath);
 
-    if (randOutPath) {
-      FILE* frand = fopen(randOutPath, "w");
-      if (!frand) fatal("couldn't open %s to write random matrix");
-      writeMat(frand, mA);
-      fclose(frand);
-      free(randOutPath);
-    }
+    if (randOutPath) free(randOutPath);
     debug("inverting random matrix...");
   } else {
     if (optind >= argc) {
@@ -186,24 +187,42 @@ int main(const int argc, char* const argv[]) {
       return 0;
     }
 
-    init(info.n, impl, quadConv);
-
-    mA = loadMat(info);
+    mA = impl == BLAS_IMPL ? hostNewMat(info.n) : devNewMat(info.n);
+    loadMat(mA, info);
     debug("inverting %s ...", matPath);
   }
 
-  Mat mR = zeroMat(mA->n);
+  Mat mR = mA->dev ? devNewMat(mA->n) : hostNewMat(mA->n);
+  clearMat(mR);
 
-  if (impl == LU_IMPL) {
-    luInvert(mA, mR);
-  } else {
-    invert(mA, mR, maxError, maxStep);
+  switch (impl) {
+    case CUBLAS_IMPL:
+      debug("inverting using cuBLAS");
+      cublInit(mA->n);
+    case BLAS_IMPL:
+      if (quadConv) debug("inverting quadratically");
+      invert(mA, mR, maxError, maxStep, quadConv);
+      break;
+    case LU_IMPL:
+      cublInit(mA->n);
+      debug("inverting using cuBLAS LU-factorization");
+      luInvert(mA, mR);
+      break;
   }
 
   if (!testMode && mR) writeMat(stdout, mR);
 
   freeMat(mA);
   if (mR) freeMat(mR);
-  shutDown();
+
+  switch (impl) {
+    case CUBLAS_IMPL:
+    case LU_IMPL:
+      cublShutDown();
+      break;
+    default:
+      break;
+  }
+
   return 0;
 }

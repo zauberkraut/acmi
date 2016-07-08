@@ -11,8 +11,8 @@ cflags = -std=c99 $(oflags) -I/usr/local/cuda/include -Wall -Werror \
          -D_POSIX_C_SOURCE=200809L
 libs = -lopenblas -lpthread -L/usr/local/cuda/lib64 -lcudart -lcublas -lm
 
-$(out): $(build)/main.o $(build)/util.o $(build)/la.o $(build)/cpu_la.o \
-        $(build)/cublas_la.o $(build)/cuda_la.o $(build)/mmio.o
+$(out): $(build)/main.o $(build)/util.o $(build)/mat.o $(build)/la.o \
+        $(build)/blas.o $(build)/cuda.o $(build)/mmio.o
 	$(cc) -o $(@) $(^) $(libs)
 
 $(build)/%.o: $(src)/%.c
