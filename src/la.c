@@ -1,34 +1,31 @@
 // la.c
 
-#include "invmat.h"
+#include "acmi.h"
 
 static void computeR0(Mat mA, Mat mR, float(*norm)(Mat)) {
+  MatClear(mR);
   const float normA = norm(mA);
   const float alpha = 1/normA;
   debug("computed alpha = %g", alpha);
-  for (int i = 0; i < mR->n; ++i) {
-    setElem(mR, i, i, alpha);
+  for (int i = 0; i < MatN(mR); ++i) {
+    MatPut(mR, i, i, alpha);
   }
 }
 
-float invert(Mat mA, Mat mR, float maxError, int maxStep, bool quadConv) {
-  const int n = mA->n;
+float altmanInvert(Mat mA, Mat mR, float maxError, int maxStep, bool quadConv) {
+  const int n = MatN(mA);
+  const bool dev = MatDev(mA);
 
   debug("initializing work matrices...");
-  static Mat mI, mAR, mX;
-  if (mA->dev) {
-    mI = devNewMat(n); mAR = devNewMat(n); mX = devNewMat(n);
-  } else {
-    mI = hostNewMat(n); mAR = hostNewMat(n); mX = hostNewMat(n);
-  }
-  clearMat(mI);
+  Mat mI = MatNew(n, dev), mAR = MatNew(n, dev), mX = MatNew(n, dev);
+  MatClear(mI);
   for (int i = 0; i < n; ++i) {
-    setElem(mI, i, i, 1);
+    MatPut(mI, i, i, 1);
   }
 
-  void (*gemm)(float, Mat, Mat, float, Mat) = mA->dev ? cublGemm : blasGemm;
-  void (*geam)(float, Mat, float, Mat, Mat) = mA->dev ? cublGeam : blasGeam;
-  float (*norm)(Mat)                        = mA->dev ? cublNorm : blasNorm;
+  void (*gemm)(float, Mat, Mat, float, Mat) = dev ? cublGemm : blasGemm;
+  void (*geam)(float, Mat, float, Mat, Mat) = dev ? cublGeam : blasGeam;
+  float (*norm)(Mat)                        = dev ? cublNorm : blasNorm;
 
   struct timespec startTime, endTime;
   clock_gettime(CLOCK_MONOTONIC, &startTime);
@@ -74,6 +71,6 @@ float invert(Mat mA, Mat mR, float maxError, int maxStep, bool quadConv) {
          maxError, step);
   }
 
-  freeMat(mI); freeMat(mAR); freeMat(mX);
+  MatFree(mI); MatFree(mAR); MatFree(mX);
   return error;
 }

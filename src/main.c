@@ -1,57 +1,111 @@
 // main.c
 
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
 #include <libgen.h>
-#include <sys/stat.h>
+#include <limits.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include "invmat.h"
+#include "acmi.h"
 
 const int MAX_PATH_LEN = 255;
 const Impl DEFAULT_IMPL = CUBLAS_IMPL;
-const float DEFAULT_MAX_ERROR = 0.0001;
-const int DEFAULT_MAX_STEP = 20;
+const float DEFAULT_MAX_ERROR = 0.00001;
+const int DEFAULT_MAX_STEP = 16;
 
 extern char *optarg;
 extern int optind, opterr, optopt;
 
-void usage() {
-  fatal("GPU-Parallelized Matrix Inverter, J. Treadwell, 2016\n\n"
-        "Usage:\n  invmat [options] <input matrix path>\n\n"
-        "Options:\n"
-        "  -h          These instructions\n"
-        "  -q          Disable logging\n"
-        "  -i          Print matrix file info and exit\n"
-        "  -t          Test mode: don't output the computed inverse\n"
-        "  -2          Employ quadratic instead of cubic convergence\n"
-        "  -m <mode>   Select implementation to run (default: cublas)\n"
-        "  -p <N>      Use N-bit floating-point matrix elements\n"
-        "  -e <real>   Set max inversion error (default: %g)\n"
-        "  -n <count>  Set max iteration to compute (default: %d)\n"
-        "  -r <N>      Invert a random NxN integer matrix\n"
-        "  -R <N>      Invert a random NxN real matrix\n"
-        "  -o <path>   Set output path for uninverted random matrix\n"
-        "  -s <hex>    Set PRNG seed\n\n"
-        "MatrixMarket files are accepted as input.\n"
-        "Computed inverses are written in MatrixMarket format to stdout.\n\n"
-        "Modes available through -m option:\n"
-        "  blas    Pure software BLAS implementation; no Nvidia GPU needed\n"
-        "  cublas  Nvidia CUDA BLAS implementation\n"
-        "  lu      Nvidia LU-factorization inversion without iteration\n\n"
-        "Use the -p option to set floating-point precision to 16, 32 or 64-bits.",
-        DEFAULT_MAX_ERROR, DEFAULT_MAX_STEP);
+long parseInt(int radix, long min, long max, const char* errMsg) {
+  char* parsePtr = 0;
+  long l = strtol(optarg, &parsePtr, radix);
+  if (parsePtr - optarg != strlen(optarg) || l < min || l > max ||
+      errno == ERANGE) {
+    fatal(errMsg);
+  }
+  return l;
 }
 
-int main(const int argc, char* const argv[]) {
-  bool quadConv = false;
+double parseFloat(double min, double maxEx, const char* errMsg) {
+  char* parsePtr;
+  double v = strtof(optarg, &parsePtr);
+  if (parsePtr - optarg != strlen(optarg) || v < min || v >= maxEx ||
+      errno == ERANGE) {
+    fatal(errMsg);
+  }
+  return v;
+}
+
+void checkWriteAccess(const char* path) {
+  const int len = strlen(path);
+  if (len > MAX_PATH_LEN) {
+    fatal("input file path exceeds %d characters", MAX_PATH_LEN);
+  }
+
+  DIR* dir = 0;
+  if (path[len-1] == '/' || path[len-1] == '\\' || (dir = opendir(path))) {
+    if (dir) {
+      closedir(dir);
+    }
+    fatal("%s is a directory", path);
+  }
+
+  if (access(path, F_OK)) { // if file does not exist
+    // check if we can create it (i.e. can we write to the directory?)
+    char* pathCopy = strndup(path, MAX_PATH_LEN);
+    const char* dir = dirname(pathCopy);
+    bool dirNotWritable = access(dir, W_OK | X_OK);
+    free(pathCopy);
+    if (dirNotWritable) {
+      fatal("can't write to directory %s", dir);
+    }
+  } else if (access(path, W_OK)) { // file exists; may we overwrite it?
+    fatal("can't write to %s", path);
+  }
+}
+
+void usage() {
+  printf("ACMI Convergent Matrix Inverter\nJ. Treadwell, 2016\n\n"
+         "Usage:\n  acmi [options] <input file>\n\n"
+         "Options:\n"
+         "  -h          These instructions\n"
+         "  -q          Disable logging\n"
+         "  -i          Print matrix file info and exit\n"
+         "  -o <path>   Output computed matrix inverse to path\n"
+         "  -m <mode>   Select implementation to run (default: cublas)\n"
+         "  -p <size>   Set floating-point precision to 16, 32 or 64 bits\n"
+         "  -2          Employ quadratic instead of cubic convergence\n"
+         "  -e <real>   Set max inversion error (default: %g)\n"
+         "  -n <count>  Set max iteration to compute (default: %d)\n"
+         "Random matrix options:\n"
+         "  -r          Randomize matrix with real elements (default: integer)\n"
+         "  -s          Generate symmetric matrix\n"
+         "  -O <path>   Output generated, uninverted random matrix to path\n"
+         "  -x <hex>    Set PRNG seed\n"
+         "Currently, only Matrix Market files are are supported.\n"
+         "To generate and invert a diagonally-dominant random matrix, enter the matrix\n"
+         "dimension prefixed by '?' instead of a filename.\n\n"
+         "Modes available through the -m option:\n"
+         "  blas    Pure software BLAS implementation; no Nvidia GPU needed\n"
+         "  cublas  Nvidia CUDA BLAS implementation\n"
+         "  lu      Nvidia LU-factorization inversion without iteration\n",
+         DEFAULT_MAX_ERROR, DEFAULT_MAX_STEP);
+  exit(0);
+}
+
+int main(int argc, char* argv[]) {
   bool infoMode = false;
-  bool testMode = false;
+  char* outPath = 0;
   Impl impl = DEFAULT_IMPL;
+  int floatPrec = 32;
+  bool quadConv = false;
   float maxError = DEFAULT_MAX_ERROR;
   int maxStep = DEFAULT_MAX_STEP;
   int randDim = 0;
-  bool randRealMode = false;
+  bool randReal = false;
+  bool randSymmetric = false;
   char* randOutPath = 0;
   unsigned prngSeed = 0;
 
@@ -61,167 +115,153 @@ int main(const int argc, char* const argv[]) {
 
   opterr = 0;
   int opt;
-
-  while ((opt = getopt(argc, argv, "hqit2m:e:n:r:R:o:s:")) != -1) {
+  while ((opt = getopt(argc, argv, "hqio:m:p:2e:n:rsO:x:")) != -1) {
     switch (opt) {
-      case 'h': usage();
-      case 'q': setVerbose(false); break;
-      case 'i': infoMode = true; break;
-      case 't': testMode = true; break;
-      case '2': quadConv = true; break;
+    case 'h': usage();              break;
+    case 'q': setVerbose(false);    break;
+    case 'i': infoMode = true;      break;
+    case '2': quadConv = true;      break;
+    case 'r': randReal = true;   break;
+    case 's': randSymmetric = true; break;
 
-      case 'm': {
-        if (!strncmp(optarg, "blas", 8)) {
-          impl = BLAS_IMPL;
-        } else if (!strncmp(optarg, "cublas", 8)) {
-          impl = CUBLAS_IMPL;
-        } else if (!strncmp(optarg, "lu", 8)) {
-          impl = LU_IMPL;
-        } else {
-          fatal("supported modes are: \"blas\", \"cublas\", \"lu\"");
-        }
-        break;
+    case 'o':
+      checkWriteAccess(optarg);
+      outPath = strndup(optarg, MAX_PATH_LEN);
+      break;
+    case 'm':
+      if (!strncmp(optarg, "blas", 8)) {
+        impl = BLAS_IMPL;
+      } else if (!strncmp(optarg, "cublas", 8)) {
+        impl = CUBLAS_IMPL;
+      } else if (!strncmp(optarg, "lu", 8)) {
+        impl = LU_IMPL;
+      } else {
+        fatal("supported modes are: \"blas\", \"cublas\", \"lu\"");
       }
-      case 'e': {
-        char* parsePtr;
-        maxError = strtof(optarg, &parsePtr);
-        if (parsePtr - optarg != strlen(optarg) || maxError < 0 ||
-            maxError >= 1 || errno == ERANGE) {
-          fatal("max error measure must be a real on [0, 1)");
-        }
-        break;
+      break;
+    case 'p': {
+      const char* errMsg = "floating-point precision must be 16, 32 or 64";
+      floatPrec = (int)parseInt(10, 16, 64, errMsg);
+      switch (floatPrec) {
+        case 16: case 32: case 64: break;
+        default: fatal(errMsg);
       }
-      case 'n': {
-        char* parsePtr;
-        maxStep = strtol(optarg, &parsePtr, 10);
-        if (parsePtr - optarg != strlen(optarg) || maxStep < 0 ||
-            maxStep > 1000 || errno == ERANGE) {
-          fatal("invalid step limit");
-        }
-        break;
-      }
-      case 'R':
-        randRealMode = true;
-      case 'r': {
-        char* parsePtr;
-        randDim = strtol(optarg, &parsePtr, 10);
-        if (parsePtr - optarg != strlen(optarg) || randDim <= 1 ||
-            randDim > MAX_MAT_DIM || errno == ERANGE) {
-          fatal("invalid random matrix dimension");
-        }
-        break;
-      }
-      case 'o': {
-        randOutPath = strndup(optarg, MAX_PATH_LEN);
-        break;
-      }
-      case 's': {
-        char* parsePtr;
-        prngSeed = strtol(optarg, &parsePtr, 16);
-        if (parsePtr - optarg != strlen(optarg) || prngSeed < 1 ||
-            errno == ERANGE) {
-          fatal("invalid 32-bit hexadecimal seed");
-        }
-        break;
-      }
+      break;
+    }
+    case 'e':
+      maxError = parseFloat(0, 1,
+                            "max error measure must be a real on [0, 1)");
+      break;
+    case 'n':
+      maxStep = (int)parseInt(10, 0, 1000, "invalid step limit");
+      break;
+    case 'O':
+      checkWriteAccess(optarg);
+      randOutPath = strndup(optarg, MAX_PATH_LEN);
+      break;
+    case 'x':
+      prngSeed = (unsigned)parseInt(16, 1, UINT_MAX,
+                                    "invalid 32-bit hexadecimal seed");
+      break;
 
-      case '?': {
-        switch (optopt) {
-          case 'm': case 'e': case 'n': case 'r': case 'R': case 'o':
-          case 's': {
-            fatal("option -%c missing argument", optopt);
-            continue;
-          }
-        }
+    case '?':
+      switch (optopt) {
+      case 'o': case 'm': case 'p': case 'e': case 'n': case 'O': case 'x':
+          fatal("option -%c missing argument", optopt);
       }
-      default: {
-        char cbuf[21];
-        if (isprint(optopt)) {
-          snprintf(cbuf, sizeof(cbuf), "%c", optopt);
-        } else {
-          snprintf(cbuf, sizeof(cbuf), "<0x%x>", optopt);
-        }
-        fatal("invalid option: -%s", cbuf);
+    default: {
+      char cbuf[21];
+      if (isprint(optopt)) {
+        snprintf(cbuf, sizeof(cbuf), "%c", optopt);
+      } else {
+        snprintf(cbuf, sizeof(cbuf), "<0x%x>", optopt);
       }
+      fatal("invalid option: -%s", cbuf);
+    }
+    }
+  }
+
+  optarg = argv[optind];
+  if (!optarg || strlen(optarg) == 0) {
+    fatal("missing input file");
+  }
+  if (optind < argc - 1) {
+    fatal("unexpected argument: %s", argv[optind+1]);
+  }
+  if (optarg[0] == '?') {
+    ++optarg;
+    randDim = (int)parseInt(10, 2, MAX_MAT_DIM,
+                            "invalid random matrix dimension");
+  } else {
+    if (randReal || randSymmetric || randOutPath || prngSeed) {
+      fatal("options -r, -s, -O and -x apply only to random matrices");
     }
   }
 
   Mat mA = 0;
 
   if (randDim) {
-    if (optind < argc) {
-      fatal("an input file or unexpected argument was given for random matrix "
-            "mode");
-    }
-    if (infoMode) fatal("info mode doesn't apply to randomly-generated "
-                        "matrices");
-
-    mA = impl == BLAS_IMPL ? hostNewMat(randDim) : devNewMat(randDim);
-
     if (!prngSeed) prngSeed = time(0);
     debug("seeding PRNG with %x", prngSeed);
     srand(prngSeed);
 
-    debug("generating random %dx%d %s matrix...", randDim, randDim,
-          randRealMode ? "real" : "integer");
-    if (randRealMode) genRandRealMat(mA, randOutPath);
-    else              genRandIntMat(mA, randOutPath);
+    debug("generating random %dx%d %s%s matrix...", randDim, randDim,
+          randReal ? "real" : "integer", randSymmetric ? ", symmetric" : "");
+    mA = MatRandDiagDom(randDim, randReal, randSymmetric);
 
-    if (randOutPath) free(randOutPath);
-    debug("inverting random matrix...");
+    if (randOutPath) {
+      MatWrite(mA, randOutPath);
+      free(randOutPath);
+    }
   } else {
-    if (optind >= argc) {
-      fatal("missing input matrix filename");
-    }
-    if (optind < argc - 1) {
-      fatal("unexpected argument: %s", argv[optind+1]);
-    }
-    if (randOutPath || prngSeed) {
-      fatal("options -o, -s only apply to random mode");
-    }
-
-    const char* matPath = argv[optind];
-
-    MatInfo info = readMatInfo(matPath);
-    if (infoMode) {
-      return 0;
-    }
-
-    mA = impl == BLAS_IMPL ? hostNewMat(info.n) : devNewMat(info.n);
-    loadMat(mA, info);
-    debug("inverting %s ...", matPath);
+    debug("loading %s", optarg);
+    mA = MatLoad(optarg, infoMode);
   }
 
-  Mat mR = mA->dev ? devNewMat(mA->n) : hostNewMat(mA->n);
-  clearMat(mR);
-
-  switch (impl) {
-    case CUBLAS_IMPL:
-      debug("inverting using cuBLAS");
-      cublInit(mA->n);
-    case BLAS_IMPL:
-      if (quadConv) debug("inverting quadratically");
-      invert(mA, mR, maxError, maxStep, quadConv);
-      break;
-    case LU_IMPL:
-      cublInit(mA->n);
-      debug("inverting using cuBLAS LU-factorization");
-      luInvert(mA, mR);
-      break;
+  if (infoMode) {
+    debug("matrix info-only mode: terminating");
+    exit(0);
   }
 
-  if (!testMode && mR) writeMat(stdout, mR);
+  if (impl != BLAS_IMPL) {
+    MatToDev(mA);
+  }
+  Mat mR = MatNew(MatN(mA), MatDev(mA));
 
-  freeMat(mA);
-  if (mR) freeMat(mR);
+  const char* zusatz = "";
+  if (quadConv)             zusatz = "quadratically";
+  else if (impl == LU_IMPL) zusatz = "using LU factorization";
+  debug("inverting %s %s...", randDim ? "random matrix" : optarg, zusatz);
 
   switch (impl) {
-    case CUBLAS_IMPL:
-    case LU_IMPL:
-      cublShutDown();
-      break;
-    default:
-      break;
+  case CUBLAS_IMPL:
+    cublInit(MatN(mA));
+  case BLAS_IMPL:
+    altmanInvert(mA, mR, maxError, maxStep, quadConv);
+    break;
+  case LU_IMPL:
+    cublInit(MatN(mA));
+    debug("inverting using cuBLAS LU-factorization");
+    luInvert(mA, mR);
+    break;
+  }
+
+  if (outPath) {
+    MatToHost(mR);
+    MatWrite(mR, outPath);
+    free(outPath);
+  }
+
+  MatFree(mA);
+  MatFree(mR);
+
+  switch (impl) {
+  case CUBLAS_IMPL:
+  case LU_IMPL:
+    cublShutDown();
+    break;
+  default:
+    break;
   }
 
   return 0;

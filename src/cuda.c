@@ -2,7 +2,7 @@
 
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
-#include "invmat.h"
+#include "acmi.h"
 
 static cublasHandle_t g_cublHandle = 0;
 static float* g_cublVector = 0;
@@ -37,6 +37,7 @@ void cuDownload(void* hostDst, const void* devSrc, size_t size) {
 }
 
 void cublInit(int n) {
+  debug("initializing cuBLAS");
   if (cublasCreate(&g_cublHandle) != CUBLAS_STATUS_SUCCESS) {
     fatal("couldn't open cuBLAS handle");
   }
@@ -44,27 +45,30 @@ void cublInit(int n) {
 }
 
 void cublShutDown() {
+  debug("shutting down cuBLAS");
   if (g_cublHandle) cublasDestroy(g_cublHandle);
   if (g_cublVector) cuFree(g_cublVector);
 }
 
 void cublGemm(float alpha, Mat mA, Mat mB, float beta, Mat mC) {
-  const int n = mA->n;
-  cublasSgemm(g_cublHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha, mA->p, n,
-              mB->p, n, &beta, mC->p, n);
+  const int n = MatN(mA);
+  cublasSgemm(g_cublHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
+              MatElements(mA), n, MatElements(mB), n, &beta, MatElements(mC),
+              n);
 }
 
 void cublGeam(float alpha, Mat mA, float beta, Mat mB, Mat mC) {
-  const int n = mA->n;
-  cublasSgeam(g_cublHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha, mA->p, n,
-              &beta, mB->p, n, mC->p, n);
+  const int n = MatN(mA);
+  cublasSgeam(g_cublHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha,
+              MatElements(mA), n, &beta, MatElements(mB), n, MatElements(mC),
+              n);
 }
 
 float cublNorm(Mat mA) {
-  const int n = mA->n;
+  const int n = MatN(mA);
   cublasSetPointerMode(g_cublHandle, CUBLAS_POINTER_MODE_DEVICE);
   for (int i = 0; i < n; ++i) {
-    cublasSnrm2(g_cublHandle, n, mA->p + i*n, 1, g_cublVector + i);
+    cublasSnrm2(g_cublHandle, n, MatElements(mA) + i*n, 1, g_cublVector + i);
   }
   float frobenius;
   cublasSetPointerMode(g_cublHandle, CUBLAS_POINTER_MODE_HOST);
@@ -74,15 +78,17 @@ float cublNorm(Mat mA) {
 
 // overwrites input matrix A!
 float luInvert(Mat mA, Mat mR) {
-  const int n = mA->n;
+  const int n = MatN(mA);
   float** devAp = cuMalloc(sizeof(float*));
   float** devRp = cuMalloc(sizeof(float*));
   int* devPivots = cuMalloc(n*sizeof(int));
   int* devInfo = cuMalloc(sizeof(int));
   int hostInfo;
 
-  cuUpload(devAp, &mA->p, sizeof(float*));
-  cuUpload(devRp, &mR->p, sizeof(float*));
+  float* hostAp = MatElements(mA);
+  float* hostRp = MatElements(mR);
+  cuUpload(devAp, &hostAp, sizeof(float*));
+  cuUpload(devRp, &hostRp, sizeof(float*));
 
   struct timespec startTime, endTime;
   clock_gettime(CLOCK_MONOTONIC, &startTime);
@@ -109,15 +115,15 @@ float luInvert(Mat mA, Mat mR) {
   cuFree(devPivots);
   cuFree(devInfo);
 
-  Mat mX = devNewMat(n);
+  Mat mX = MatNew(n, true);
   cublGemm(-1, mA, mR, 0, mX);
-  clearMat(mA);
+  MatClear(mA);
   for (int i = 0; i < n; ++i) {
-    setElem(mA, i, i, 1);
+    MatPut(mA, i, i, 1);
   }
   cublGeam(1, mA, 1, mX, mX);
   float error = cublNorm(mX);
-  freeMat(mX);
+  MatFree(mX);
 
   debug("LU factorization and inversion completed after %g seconds "
         "with error measure %g", invTimeS, error);
