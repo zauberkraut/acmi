@@ -80,7 +80,6 @@ void usage() {
          "  -e <real>   Set max inversion error (default: %g)\n"
          "  -n <count>  Set max iteration to compute (default: %d)\n"
          "Random matrix options:\n"
-         "  -r          Randomize matrix with real elements (default: integer)\n"
          "  -s          Generate symmetric matrix\n"
          "  -O <path>   Output generated, uninverted random matrix to path\n"
          "  -x <hex>    Set PRNG seed\n"
@@ -104,8 +103,7 @@ int main(int argc, char* argv[]) {
   float maxError = DEFAULT_MAX_ERROR;
   int maxStep = DEFAULT_MAX_STEP;
   int randDim = 0;
-  bool randReal = false;
-  bool randSymmetric = false;
+  bool randSymm = false;
   char* randOutPath = 0;
   unsigned prngSeed = 0;
 
@@ -115,14 +113,13 @@ int main(int argc, char* argv[]) {
 
   opterr = 0;
   int opt;
-  while ((opt = getopt(argc, argv, "hqio:m:p:2e:n:rsO:x:")) != -1) {
+  while ((opt = getopt(argc, argv, "hqio:m:p:2e:n:sO:x:")) != -1) {
     switch (opt) {
     case 'h': usage();              break;
     case 'q': setVerbose(false);    break;
     case 'i': infoMode = true;      break;
     case '2': quadConv = true;      break;
-    case 'r': randReal = true;   break;
-    case 's': randSymmetric = true; break;
+    case 's': randSymm = true; break;
 
     case 'o':
       checkWriteAccess(optarg);
@@ -193,7 +190,7 @@ int main(int argc, char* argv[]) {
     randDim = (int)parseInt(10, 2, MAX_MAT_DIM,
                             "invalid random matrix dimension");
   } else {
-    if (randReal || randSymmetric || randOutPath || prngSeed) {
+    if (randSymm || randOutPath || prngSeed) {
       fatal("options -r, -s, -O and -x apply only to random matrices");
     }
   }
@@ -205,9 +202,9 @@ int main(int argc, char* argv[]) {
     debug("seeding PRNG with %x", prngSeed);
     srand(prngSeed);
 
-    debug("generating random %dx%d %s%s matrix...", randDim, randDim,
-          randReal ? "real" : "integer", randSymmetric ? ", symmetric" : "");
-    mA = MatRandDiagDom(randDim, randReal, randSymmetric);
+    debug("generating random %dx%d%s matrix...", randDim, randDim,
+          randSymm ? " symmetric" : "");
+    mA = MatRandDiagDom(randDim, randSymm);
 
     if (randOutPath) {
       MatWrite(mA, randOutPath);

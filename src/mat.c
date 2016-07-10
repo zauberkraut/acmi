@@ -10,9 +10,9 @@ struct Mat_ {
   int n;
   int64_t n2;
   size_t size;
-  float* elements;
+  float* elems;
   bool dev;
-  bool symmetric;
+  bool symm;
   bool sparse;
   double trace;
 };
@@ -32,7 +32,8 @@ static Mat MatEmptyNew(int n) {
 
 static void updateTotalMatBytes(Mat m, bool alloc) {
   size_t* total = m->dev ? &g_devTotalMatBytes : &g_hostTotalMatBytes;
-  if (alloc) *total += m->size; else *total -= m->size;
+  if (alloc) *total += m->size;
+  else       *total -= m->size;
   debug("%s %.3f MiB %dx%d matrix on %s; %.3f MiB %s",
         alloc ? "allocating" : "freeing", mibibytes(m->size), m->n, m->n,
         m->dev ? "device" : "host", mibibytes(*total),
@@ -41,7 +42,7 @@ static void updateTotalMatBytes(Mat m, bool alloc) {
 
 static void MatNewElements(Mat m, bool dev) {
   m->dev = dev;
-  m->elements = dev ? cuMalloc(m->size) : malloc(m->size);
+  m->elems = dev ? cuMalloc(m->size) : malloc(m->size);
   updateTotalMatBytes(m, true);
 }
 
@@ -52,11 +53,11 @@ Mat MatNew(int n, bool dev) {
 }
 
 static void MatFreeElements(Mat m) {
-  assert(m->elements);
+  assert(m->elems);
 
-  if (m->dev) cuFree(m->elements);
-  else        free(m->elements);
-  m->elements = 0;
+  if (m->dev) cuFree(m->elems);
+  else        free(m->elems);
+  m->elems = 0;
   updateTotalMatBytes(m, false);
 }
 
@@ -69,14 +70,14 @@ void MatFree(Mat m) {
 }
 
 void MatClear(Mat m) {
-  if (m->dev) cuClear(m->elements, m->size);
-  else        memset(m->elements, 0, m->size);
+  if (m->dev) cuClear(m->elems, m->size);
+  else        memset(m->elems, 0, m->size);
 }
 
 int MatN(Mat m) { return m->n; }
 int64_t MatN2(Mat m) { return m->n2; }
 size_t MatSize(Mat m) { return m->size; }
-float* MatElements(Mat m) { return m->elements; }
+float* MatElements(Mat m) { return m->elems; }
 bool MatDev(Mat m) { return m->dev; }
 
 double MatTrace(Mat m) {
@@ -94,9 +95,9 @@ void MatToDev(Mat m) {
   if (!m->dev) {
     debug("uploading matrix to device");
     updateTotalMatBytes(m, false);
-    float* hostElements = m->elements;
+    float* hostElements = m->elems;
     MatNewElements(m, true);
-    cuUpload(m->elements, hostElements, m->size);
+    cuUpload(m->elems, hostElements, m->size);
     free(hostElements);
   }
 }
@@ -105,25 +106,25 @@ void MatToHost(Mat m) {
   if (m->dev) {
     debug("downloading matrix from device");
     updateTotalMatBytes(m, false);
-    float* devElements = m->elements;
+    float* devElements = m->elems;
     MatNewElements(m, false);
-    cuDownload(m->elements, devElements, m->size);
+    cuDownload(m->elems, devElements, m->size);
     cuFree(devElements);
   }
 }
 
 float MatGet(Mat m, int row, int col) {
   assert(row >= 0 && row < m->n && col >= 0 && col < m->n);
-  float e;
-  if (m->dev) cuDownload(&e, m->elements + col*m->n + row, sizeof(e));
-  else        e = m->elements[col*m->n + row];
-  return e;
+  float elem;
+  if (m->dev) cuDownload(&elem, m->elems + col*m->n + row, sizeof(elem));
+  else        elem = m->elems[col*m->n + row];
+  return elem;
 }
 
-void MatPut(Mat m, int row, int col, float e) {
+void MatPut(Mat m, int row, int col, float elem) {
   assert(row >= 0 && row < m->n && col >= 0 && col < m->n);
-  if (m->dev) cuUpload(m->elements + col*m->n + row, &e, sizeof(e));
-  else        m->elements[col*m->n + row] = e;
+  if (m->dev) cuUpload(m->elems + col*m->n + row, &elem, sizeof(elem));
+  else        m->elems[col*m->n + row] = elem;
 }
 
 Mat MatLoad(const char* path, bool attrOnly) {
@@ -183,7 +184,7 @@ Mat MatLoad(const char* path, bool attrOnly) {
   }
 
   Mat m = MatNew(n, false);
-  m->symmetric = mm_is_symmetric(matCode);
+  m->symm = mm_is_symmetric(matCode);
   m->sparse = sparsity < SPARSITY_THRESHOLD;
 
   if (coord) {
@@ -194,22 +195,22 @@ Mat MatLoad(const char* path, bool attrOnly) {
 
     for (int i = 0; i < nEntries; ++i) {
       int row, col;
-      float e = 1;
-      if (fscanf(in, parseStr, &row, &col, &e) != paramsPerElem) {
+      float elem = 1;
+      if (fscanf(in, parseStr, &row, &col, &elem) != paramsPerElem) {
         fatal("error reading element %d from %s", i + 1, path);
       }
-      MatPut(m, row - 1, col - 1, e);
+      MatPut(m, row - 1, col - 1, elem);
 
       if (symmOrSkew && row != col) {
-        MatPut(m, n - row, n - col, symmSign*e);
+        MatPut(m, n - row, n - col, symmSign*elem);
       }
     }
   } else {
     for (int col = 0; col < n; ++col) {
       for (int row = 0; row < n; ++row) {
-        float e;
-        fscanf(in, "%f", &e);
-        MatPut(m, row, col, e);
+        float elem;
+        fscanf(in, "%f", &elem);
+        MatPut(m, row, col, elem);
       }
     }
   }
@@ -254,9 +255,9 @@ void MatWrite(Mat m, const char* path) {
 
     for (int col = 0; col < n; ++col) {
       for (int row = 0; row < n; ++row) {
-        float e = MatGet(m, row, col);
-        if (fabsf(e) > 0) {
-          fprintf(out, "%d %d %g\n", row + 1, col + 1, e);
+        float elem = MatGet(m, row, col);
+        if (fabsf(elem) > 0) {
+          fprintf(out, "%d %d %g\n", row + 1, col + 1, elem);
         }
       }
     }
@@ -273,27 +274,29 @@ void MatWrite(Mat m, const char* path) {
   fclose(out);
 }
 
-Mat MatRandDiagDom(int n, bool real, bool symmetric) {
-  if (symmetric) assert(false);
+Mat MatRandDiagDom(int n, bool symm) {
   Mat m = MatNew(n, false);
 
   for (int row = 0; row < n; ++row) {
-    int64_t rowSum = 0;
-    //int signD = rand() % 2 ? 1 : -1;
+    int col = symm ? row : 0;
+    double rowSum = 0;
+    for (int i = 0; i < col; ++i) rowSum += fabs(MatGet(m, row, i));
 
-    for (int col = 0; col < n; ++col) {
+    for (; col < n; ++col) {
       if (row != col) {
-        int signE = rand() % 2 ? 1 : -1;
-        int r = rand();
-        if (!real) r %= n;
-        float v = signE*(real ? r*n/(double)RAND_MAX : r);
-        MatPut(m, row, col, v);
-        rowSum += r;
+        float absElem = (float)(rand() % n);
+        float signE = rand() % 2 ? 1 : -1;
+        float elem = signE*absElem;
+        MatPut(m, row, col, elem);
+        if (symm) {
+          MatPut(m, col, row, elem);
+        }
+        rowSum += absElem;
       }
     }
 
-    float v = 1 + (real ? rowSum*n/(double)RAND_MAX : rowSum);
-    MatPut(m, row, row, /*signD*/v);
+    //int signD = rand() % 2 ? 1 : -1;
+    MatPut(m, row, row, /*signD**/(rowSum + 1));
   }
 
   return m;

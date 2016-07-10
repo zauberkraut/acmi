@@ -16,6 +16,7 @@ static const int MAX_MAT_DIM = 32768;
 struct Mat_;
 typedef struct Mat_* Mat;
 typedef enum {BLAS_IMPL, CUBLAS_IMPL, LU_IMPL} Impl;
+typedef union {uint16_t fp16; float fp32; double fp64;} MatElem;
 
 // util.c
 void setVerbose(bool b);
@@ -37,10 +38,10 @@ double MatTrace(Mat m);
 void MatToDev(Mat m);
 void MatToHost(Mat m);
 float MatGet(Mat m, int row, int col);
-void MatPut(Mat m, int row, int col, float e);
+void MatPut(Mat m, int row, int col, float elem);
 Mat MatLoad(const char* path, bool attrOnly);
 void MatWrite(Mat m, const char* path);
-Mat MatRandDiagDom(int n, bool real, bool symmetric);
+Mat MatRandDiagDom(int n, bool symm);
 
 // la.c
 float altmanInvert(Mat mA, Mat mR, float maxError, int maxStep, bool quadConv);

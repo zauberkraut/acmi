@@ -5,18 +5,14 @@
 #include "acmi.h"
 
 void blasGemm(float alpha, Mat mA, Mat mB, float beta, Mat mC) {
-  if (mA == mC || mB == mC) {
-    fatal("gemm operand may not be both source and target");
-  }
+  assert (mA != mC && mB != mC);
   const int n = MatN(mA);
   cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n, n, alpha,
               MatElements(mA), n, MatElements(mB), n, beta, MatElements(mC), n);
 }
 
 void blasGeam(float alpha, Mat mA, float beta, Mat mB, Mat mC) {
-  if (mA == mC) {
-    fatal("first geam operand may not be both source and target");
-  }
+  assert(mA != mC);
   const int n = MatN(mA);
 
   for (int i = 0; i < n; ++i) {

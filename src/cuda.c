@@ -7,33 +7,26 @@
 static cublasHandle_t g_cublHandle = 0;
 static float* g_cublVector = 0;
 
-static void cuCheck(cudaError_t err) {
-  if (err != cudaSuccess) {
-    fatal("%s:%d CUDA error %d: %s", err,
-          cudaGetErrorString(err));
-  }
-}
-
 void* cuMalloc(size_t size) {
   void* p;
-  cuCheck(cudaMalloc(&p, size));
+  assert(cudaMalloc(&p, size) == cudaSuccess);
   return p;
 }
 
-void cuFree(void* p) {
-  cuCheck(cudaFree(p));
-}
+void cuFree(void* p) { assert(cudaFree(p) == cudaSuccess); }
 
 void cuClear(void* p, size_t size) {
-  cuCheck(cudaMemset(p, 0, size));
+  assert(cudaMemset(p, 0, size) == cudaSuccess);
 }
 
 void cuUpload(void* devDst, const void* hostSrc, size_t size) {
-  cuCheck(cudaMemcpy(devDst, hostSrc, size, cudaMemcpyHostToDevice));
+  assert(cudaMemcpy(devDst, hostSrc, size, cudaMemcpyHostToDevice) ==
+         cudaSuccess);
 }
 
 void cuDownload(void* hostDst, const void* devSrc, size_t size) {
-  cuCheck(cudaMemcpy(hostDst, devSrc, size, cudaMemcpyDeviceToHost));
+  assert(cudaMemcpy(hostDst, devSrc, size, cudaMemcpyDeviceToHost) ==
+         cudaSuccess);
 }
 
 void cublInit(int n) {
