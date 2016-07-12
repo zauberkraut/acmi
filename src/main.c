@@ -12,7 +12,7 @@
 
 const int MAX_PATH_LEN = 255;
 const Impl DEFAULT_IMPL = CUBLAS_IMPL;
-const float DEFAULT_MAX_ERROR = 0.00001;
+const double DEFAULT_MAX_ERROR = 0.00001;
 const int DEFAULT_MAX_STEP = 16;
 
 extern char *optarg;
@@ -75,7 +75,7 @@ void usage() {
          "  -i          Print matrix file info and exit\n"
          "  -o <path>   Output computed matrix inverse to path\n"
          "  -m <mode>   Select implementation to run (default: cublas)\n"
-         "  -p <size>   Set floating-point precision to 16, 32 or 64 bits\n"
+         "  -d          Enable double-precision floating-point matrix elements\n"
          "  -2          Employ quadratic instead of cubic convergence\n"
          "  -e <real>   Set max inversion error (default: %g)\n"
          "  -n <count>  Set max iteration to compute (default: %d)\n"
@@ -87,7 +87,7 @@ void usage() {
          "To generate and invert a diagonally-dominant random matrix, enter the matrix\n"
          "dimension prefixed by '?' instead of a filename.\n\n"
          "Modes available through the -m option:\n"
-         "  blas    Pure software BLAS implementation; no Nvidia GPU needed\n"
+         "  cpu     Pure software BLAS implementation; no Nvidia GPU needed\n"
          "  cublas  Nvidia CUDA BLAS implementation\n"
          "  lu      Nvidia LU-factorization inversion without iteration\n",
          DEFAULT_MAX_ERROR, DEFAULT_MAX_STEP);
@@ -98,9 +98,9 @@ int main(int argc, char* argv[]) {
   bool infoMode = false;
   char* outPath = 0;
   Impl impl = DEFAULT_IMPL;
-  int floatPrec = 32;
+  bool doublePrec = false;
   bool quadConv = false;
-  float maxError = DEFAULT_MAX_ERROR;
+  double maxError = DEFAULT_MAX_ERROR;
   int maxStep = DEFAULT_MAX_STEP;
   int randDim = 0;
   bool randSymm = false;
@@ -113,11 +113,12 @@ int main(int argc, char* argv[]) {
 
   opterr = 0;
   int opt;
-  while ((opt = getopt(argc, argv, "hqio:m:p:2e:n:sO:x:")) != -1) {
+  while ((opt = getopt(argc, argv, "hqio:m:d2e:n:sO:x:")) != -1) {
     switch (opt) {
     case 'h': usage();              break;
     case 'q': setVerbose(false);    break;
     case 'i': infoMode = true;      break;
+    case 'd': doublePrec = true;      break;
     case '2': quadConv = true;      break;
     case 's': randSymm = true; break;
 
@@ -126,25 +127,16 @@ int main(int argc, char* argv[]) {
       outPath = strndup(optarg, MAX_PATH_LEN);
       break;
     case 'm':
-      if (!strncmp(optarg, "blas", 8)) {
-        impl = BLAS_IMPL;
+      if (!strncmp(optarg, "cpu", 8)) {
+        impl = CPU_IMPL;
       } else if (!strncmp(optarg, "cublas", 8)) {
         impl = CUBLAS_IMPL;
       } else if (!strncmp(optarg, "lu", 8)) {
         impl = LU_IMPL;
       } else {
-        fatal("supported modes are: \"blas\", \"cublas\", \"lu\"");
+        fatal("supported modes are: \"cpu\", \"cublas\", \"lu\"");
       }
       break;
-    case 'p': {
-      const char* errMsg = "floating-point precision must be 16, 32 or 64";
-      floatPrec = (int)parseInt(10, 16, 64, errMsg);
-      switch (floatPrec) {
-        case 16: case 32: case 64: break;
-        default: fatal(errMsg);
-      }
-      break;
-    }
     case 'e':
       maxError = parseFloat(0, 1,
                             "max error measure must be a real on [0, 1)");
@@ -163,7 +155,7 @@ int main(int argc, char* argv[]) {
 
     case '?':
       switch (optopt) {
-      case 'o': case 'm': case 'p': case 'e': case 'n': case 'O': case 'x':
+      case 'o': case 'm': case 'e': case 'n': case 'O': case 'x':
           fatal("option -%c missing argument", optopt);
       }
     default: {
@@ -202,9 +194,9 @@ int main(int argc, char* argv[]) {
     debug("seeding PRNG with %x", prngSeed);
     srand(prngSeed);
 
-    debug("generating random %dx%d%s matrix...", randDim, randDim,
-          randSymm ? " symmetric" : "");
-    mA = MatRandDiagDom(randDim, randSymm);
+    debug("generating %d-bit random %dx%d%s matrix...", doublePrec ? 64 : 32,
+          randDim, randDim, randSymm ? " symmetric" : "");
+    mA = MatRandDiagDom(randDim, doublePrec, randSymm);
 
     if (randOutPath) {
       MatWrite(mA, randOutPath);
@@ -212,7 +204,7 @@ int main(int argc, char* argv[]) {
     }
   } else {
     debug("loading %s", optarg);
-    mA = MatLoad(optarg, infoMode);
+    mA = MatLoad(optarg, doublePrec, infoMode);
   }
 
   if (infoMode) {
@@ -220,10 +212,10 @@ int main(int argc, char* argv[]) {
     exit(0);
   }
 
-  if (impl != BLAS_IMPL) {
+  if (impl != CPU_IMPL) {
     MatToDev(mA);
   }
-  Mat mR = MatNew(MatN(mA), MatDev(mA));
+  Mat mR = MatBuild(mA);
 
   const char* zusatz = "";
   if (quadConv)             zusatz = "quadratically";
@@ -232,12 +224,12 @@ int main(int argc, char* argv[]) {
 
   switch (impl) {
   case CUBLAS_IMPL:
-    cublInit(MatN(mA));
-  case BLAS_IMPL:
+    initCublas();
+  case CPU_IMPL:
     altmanInvert(mA, mR, maxError, maxStep, quadConv);
     break;
   case LU_IMPL:
-    cublInit(MatN(mA));
+    initCublas();
     debug("inverting using cuBLAS LU-factorization");
     luInvert(mA, mR);
     break;
@@ -255,7 +247,7 @@ int main(int argc, char* argv[]) {
   switch (impl) {
   case CUBLAS_IMPL:
   case LU_IMPL:
-    cublShutDown();
+    shutDownCublas();
     break;
   default:
     break;

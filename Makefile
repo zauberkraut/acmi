@@ -5,21 +5,27 @@ build = $(root)/build
 bin = $(build)/$(name)
 
 cc = gcc
+nvcc = nvcc
 
-oflags = -Os
-cflags = -std=c11 $(oflags) -I/usr/local/cuda/include -Wall -Werror \
+oflags = -O2
+wflags = -Wall -Werror
+cflags = -std=c11 $(oflags) $(wflags) -I/usr/local/cuda/include \
          -D_POSIX_C_SOURCE=200809L
 libs = -lopenblas -lpthread -L/usr/local/cuda/lib64 -lcudart -lcublas -lm
 
-$(bin): $(build)/main.o $(build)/util.o $(build)/mat.o $(build)/la.o \
-        $(build)/blas.o $(build)/cuda.o $(build)/mmio.o
+$(bin): $(build)/main.o $(build)/util.o $(build)/mat.o $(build)/invert.o \
+        $(build)/blas.o $(build)/kernels.obj $(build)/mmio.o
 	$(cc) -o $(@) $(^) $(libs)
 
 $(build)/%.o: $(src)/%.c
 	@mkdir -p $(build)
-	$(cc) -o $(@) -c $(<) $(cflags)
+	$(cc) -o $(@) $(cflags) -c $(<)
 
-debug: oflags = -O0 -g3
+$(build)/%.obj: $(src)/%.cu
+	@mkdir -p $(build)
+	$(nvcc) -o $(@) $(oflags) -Xcompiler "$(wflags)" -c $(<)
+
+debug: oflags = -O0 -g
 debug: $(out)
 
 .PHONY: clean

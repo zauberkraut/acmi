@@ -4,6 +4,7 @@
 #define ACMI_H
 
 #include <assert.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -12,11 +13,10 @@
 #include <time.h>
 
 static const int MAX_MAT_DIM = 32768;
+typedef enum {CPU_IMPL, CUBLAS_IMPL, LU_IMPL} Impl;
 
 struct Mat_;
 typedef struct Mat_* Mat;
-typedef enum {BLAS_IMPL, CUBLAS_IMPL, LU_IMPL} Impl;
-typedef union {uint16_t fp16; float fp32; double fp64;} MatElem;
 
 // util.c
 void setVerbose(bool b);
@@ -26,42 +26,49 @@ void fatal(const char* msg, ...);
 double mibibytes(size_t size);
 
 // mat.c
-Mat MatNew(int n, bool dev);
+Mat MatNew(int n, bool doublePrec, bool dev);
+Mat MatBuild(Mat m);
 void MatFree(Mat m);
 void MatClear(Mat m);
 int MatN(Mat m);
 int64_t MatN2(Mat m);
+bool MatDouble(Mat m);
+int MatElemSize(Mat m);
 size_t MatSize(Mat m);
-float* MatElements(Mat m);
+size_t MatPitch(Mat m);
+void* MatElems(Mat m);
+void* MatCol(Mat m, int col);
 bool MatDev(Mat m);
+bool MatSymm(Mat m);
+bool MattSparse(Mat m);
 double MatTrace(Mat m);
 void MatToDev(Mat m);
 void MatToHost(Mat m);
-float MatGet(Mat m, int row, int col);
-void MatPut(Mat m, int row, int col, float elem);
-Mat MatLoad(const char* path, bool attrOnly);
+double MatGet(Mat m, int row, int col);
+void MatPut(Mat m, int row, int col, double elem);
+Mat MatLoad(const char* path, bool doublePrec, bool attrOnly);
 void MatWrite(Mat m, const char* path);
-Mat MatRandDiagDom(int n, bool symm);
+Mat MatRandDiagDom(int n, bool doublePrec, bool symm);
+void MatDebug(Mat m);
 
-// la.c
-float altmanInvert(Mat mA, Mat mR, float maxError, int maxStep, bool quadConv);
+// invert.c
+double altmanInvert(Mat mA, Mat mR, double maxError, int maxStep,
+                    bool quadConv);
 
 // blas.c
-void blasGemm(float alpha, Mat mA, Mat mB, float beta, Mat mC);
-void blasGeam(float alpha, Mat mA, float beta, Mat mB, Mat mC);
-float blasNorm(Mat mA);
+void initCublas();
+void shutDownCublas();
+void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC);
+void gemmT(double alpha, Mat mA, Mat mB, double beta, Mat mC);
+void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC);
+double norm(Mat mA);
+double luInvert(Mat mA, Mat mR);
 
-// cuda.c
+// kernels.c
 void* cuMalloc(size_t size);
 void cuFree(void* p);
 void cuClear(void* p, size_t size);
 void cuUpload(void* devDst, const void* hostSrc, size_t size);
 void cuDownload(void* hostDst, const void* devSrc, size_t size);
-void cublInit(int n);
-void cublShutDown();
-void cublGemm(float alpha, Mat mA, Mat mB, float beta, Mat mC);
-void cublGeam(float alpha, Mat mA, float beta, Mat mB, Mat mC);
-float cublNorm(Mat mA);
-float luInvert(Mat mA, Mat mR);
 
 #endif

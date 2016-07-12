@@ -1,40 +1,32 @@
-// la.c
+// invert.c
 
 #include "acmi.h"
 
-static void computeR0(Mat mA, Mat mR, float(*norm)(Mat)) {
-  MatClear(mR);
-  const float normA = norm(mA);
-  const float alpha = 1/normA;
-  debug("computed alpha = %g", alpha);
-  for (int i = 0; i < MatN(mR); ++i) {
-    MatPut(mR, i, i, alpha);
-  }
-}
-
-float altmanInvert(Mat mA, Mat mR, float maxError, int maxStep, bool quadConv) {
-  const int n = MatN(mA);
-  const bool dev = MatDev(mA);
-
+double altmanInvert(Mat mA, Mat mR, double maxError, int maxStep, bool quadConv)
+{
   debug("initializing work matrices...");
-  Mat mI = MatNew(n, dev), mAR = MatNew(n, dev), mX = MatNew(n, dev);
+  Mat mI = MatBuild(mA), mAR = MatBuild(mA), mX = MatBuild(mA);
   MatClear(mI);
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < MatN(mA); ++i) {
     MatPut(mI, i, i, 1);
   }
-
-  void (*gemm)(float, Mat, Mat, float, Mat) = dev ? cublGemm : blasGemm;
-  void (*geam)(float, Mat, float, Mat, Mat) = dev ? cublGeam : blasGeam;
-  float (*norm)(Mat)                        = dev ? cublNorm : blasNorm;
 
   struct timespec startTime, endTime;
   clock_gettime(CLOCK_MONOTONIC, &startTime);
 
-  computeR0(mA, mR, norm);
-  float prevError = 1.0/0.0;
+  const double normA = norm(mA);
+  const double alpha = 1/normA;
+
+  MatClear(mR);
+  for (int i = 0; i < MatN(mR); ++i) {
+    MatPut(mR, i, i, alpha);
+  }
+
+  debug("computed alpha = %g", alpha);
+  double error, prevError = INFINITY;
+
   gemm(1, mA, mR, 0, mAR);
-  geam(1, mI, -1, mAR, mX);
-  float error = norm(mX);
+  error = sqrt(MatN(mA) + 1 - 2*alpha*MatTrace(mA));
 
   int step = 0;
   for (; step < maxStep && error > maxError && error < prevError; ++step) {
