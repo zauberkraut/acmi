@@ -1,4 +1,6 @@
-// util.c
+/* util.c
+
+   ACMI utility functions. */
 
 #include <stdarg.h>
 #include <stdbool.h>

@@ -1,29 +1,36 @@
-// mat.c
+/* mat.c
+
+   ACMI matrix type with functions. */
 
 #include <math.h>
 #include "acmi.h"
 #include "mmio.h"
 
+/* A matrix is sparse when its proportion of nonzero entries is exceeded by
+   this. */
 static const double SPARSITY_THRESHOLD = 0.05;
 
 struct Mat_ {
-  int n;
-  int64_t n2;
-  int elemSize;
-  size_t size;
-  size_t pitch;
-  void* elems;
-  bool dev;
-  bool symm;
-  bool sparse;
-  double trace;
+  int n;        // square matrix dimension
+  int64_t n2;   // n*n
+  int elemSize; // bytes per elem
+  size_t size;  // total bytes allocated to elems
+  size_t pitch; // bytes per row
+  void* elems;  // the linear array of matrix entries
+  bool dev;     // is matrix in device memory?
+  bool symm;    // is matrix symmetric?
+  bool sparse;  // is matrix sparse?
+  double trace; // the sum of the diagonal entries
 };
 
+// for generic marshalling of different FP precisions
 typedef union {uint16_t fp16; float fp32; double fp64;} Elem;
 
+// total host/device bytes allocated to matrix elements
 static size_t g_devTotalMatBytes = 0;
 static size_t g_hostTotalMatBytes = 0;
 
+/* Initializes a matrix without allocating element space. */
 static Mat MatEmptyNew(int n, bool doublePrec) {
   Mat m = malloc(sizeof(struct Mat_));
   memset(m, 0, sizeof(struct Mat_));
@@ -36,6 +43,7 @@ static Mat MatEmptyNew(int n, bool doublePrec) {
   return m;
 }
 
+/* Keeps track of matrix memory allocated. */
 static void updateTotalMatBytes(Mat m, bool alloc) {
   size_t* total = m->dev ? &g_devTotalMatBytes : &g_hostTotalMatBytes;
   if (alloc) *total += m->size;
@@ -46,22 +54,26 @@ static void updateTotalMatBytes(Mat m, bool alloc) {
         alloc ? "total" : "remain");
 }
 
+/* Allocates space for a matrix' elements. */
 static void MatNewElems(Mat m, bool dev) {
   m->dev = dev;
   m->elems = dev ? cuMalloc(m->size) : malloc(m->size);
   updateTotalMatBytes(m, true);
 }
 
+/* Makes a new, functional matrix with undefined entry values. */
 Mat MatNew(int n, bool doublePrec, bool dev) {
   Mat m = MatEmptyNew(n, doublePrec);
   MatNewElems(m, dev);
   return m;
 }
 
+/* Same as MatNew(), but sources parameters from a given template matrix. */
 Mat MatBuild(Mat m) {
   return MatNew(m->n, MatDouble(m), m->dev);
 }
 
+/* Frees a matrix' elements, but not the matrix struct itself. */
 static void MatFreeElems(Mat m) {
   assert(m->elems);
 
@@ -71,6 +83,7 @@ static void MatFreeElems(Mat m) {
   updateTotalMatBytes(m, false);
 }
 
+/* Frees a matrix as well as its elements. */
 void MatFree(Mat m) {
   assert(m);
 
@@ -79,16 +92,19 @@ void MatFree(Mat m) {
   free(m);
 }
 
+/* Zeroes a matrix' entries. */
 void MatClear(Mat m) {
   if (m->dev) cuClear(m->elems, m->size);
   else        memset(m->elems, 0, m->size);
 }
 
+/* Computes a pointer to any given element of a matrix. */
 static inline void* elemAddr(Mat m, int row, int col) {
   unsigned char* p = m->elems;
   return p + col*m->pitch + row*m->elemSize;
 }
 
+// getters
 int MatN(Mat m) { return m->n; }
 int64_t MatN2(Mat m) { return m->n2; }
 bool MatDouble(Mat m) { return m->elemSize == 8; }
@@ -101,6 +117,7 @@ bool MatDev(Mat m) { return m->dev; }
 bool MatSymm(Mat m) { return m->symm; }
 bool MatSparse(Mat m) { return m->sparse; }
 
+/* Returns a matrix' trace, lazily computing it. */
 double MatTrace(Mat m) {
   if (isnan(m->trace)) {
     debug("computing matrix trace");
@@ -113,6 +130,7 @@ double MatTrace(Mat m) {
   return m->trace;
 }
 
+/* Uploads a matrix' elements to device memory, freeing its host memory. */
 void MatToDev(Mat m) {
   if (!m->dev) {
     debug("uploading matrix to device");
@@ -124,6 +142,7 @@ void MatToDev(Mat m) {
   }
 }
 
+/* Downloads a matrix' elements to host memory, freeing its device memory. */
 void MatToHost(Mat m) {
   if (m->dev) {
     debug("downloading matrix from device");
@@ -135,6 +154,7 @@ void MatToHost(Mat m) {
   }
 }
 
+/* Returns a matrix element. */
 double MatGet(Mat m, int row, int col) {
   assert(row >= 0 && row < m->n && col >= 0 && col < m->n);
   Elem e;
@@ -143,6 +163,7 @@ double MatGet(Mat m, int row, int col) {
   return MatDouble(m) ? e.fp64 : e.fp32;
 }
 
+/* Sets a matrix element. */
 void MatPut(Mat m, int row, int col, double elem) {
   assert(row >= 0 && row < m->n && col >= 0 && col < m->n);
   Elem e;
@@ -152,6 +173,7 @@ void MatPut(Mat m, int row, int col, double elem) {
   else        memcpy(elemAddr(m, row, col), &e, m->elemSize);
 }
 
+/* Loads a matrix of the given precision from a file. */
 Mat MatLoad(const char* path, bool doublePrec, bool attrOnly) {
   FILE* in = fopen(path, "r");
   if (!in) fatal("couldn't open %s", path);
@@ -222,7 +244,7 @@ Mat MatLoad(const char* path, bool doublePrec, bool attrOnly) {
       }
       MatPut(m, row - 1, col - 1, elem);
 
-      if (symmOrSkew && row != col) {
+      if (symmOrSkew && row != col) { // mirror symmetric element
         MatPut(m, col - 1, row - 1, symmSign*elem);
       }
     }
@@ -249,6 +271,8 @@ Mat MatLoad(const char* path, bool doublePrec, bool attrOnly) {
   return m;
 }
 
+/* Writes a matrix out to a given path. */
+// TODO: implement symmetric output
 void MatWrite(Mat m, const char* path) {
   if (m->dev) fatal("only host matrices may be written to disk");
   FILE* out = fopen(path, "w");
@@ -268,7 +292,7 @@ void MatWrite(Mat m, const char* path) {
 
   mm_write_banner(out, matCode);
 
-  if (m->sparse) {
+  if (m->sparse) { // take advantage of the coordinate format
     // count nonzero elements
     // TODO: count during next loop instead and write the size later
     int64_t nNonzero = 0;
@@ -302,6 +326,8 @@ void MatWrite(Mat m, const char* path) {
   fclose(out);
 }
 
+/* Generates a random, invertible, diagonally-dominant matrix, the diagonal
+   entries of which shall be positive to avoid ill-conditioning. */
 Mat MatRandDiagDom(int n, bool doublePrec, bool symm) {
   Mat m = MatNew(n, doublePrec, false);
   m->symm = symm;
@@ -310,24 +336,26 @@ Mat MatRandDiagDom(int n, bool doublePrec, bool symm) {
   for (int row = 0; row < n; ++row) {
     int col = symm ? row : 0;
     double rowSum = 0;
+    // if symmetric, sum the elements before this diagonal
     for (int i = 0; i < col; ++i) rowSum += fabs(MatGet(m, row, i));
 
     for (; col < n; ++col) {
-      if (row != col) {
+      if (row != col) { // diagonals are set below from the computed sum
         double absElem = (double)(rand() % n);
-        double signE = rand() % 2 ? 1 : -1;
+        double signE = rand() % 2 ? 1 : -1; // random element sign
         double elem = signE*absElem;
         MatPut(m, row, col, elem);
-        if (symm) {
+        if (symm) { // mirror symmetric element
           MatPut(m, col, row, elem);
         }
         rowSum += absElem;
       }
     }
 
+    // make diagonal strictly greater than the sum of the other row entries
     double diag = nextafter(rowSum, INFINITY);
     MatPut(m, row, row, diag);
-    m->trace += diag;
+    m->trace += diag; // opportunistic trace computation
   }
 
   return m;

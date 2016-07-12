@@ -1,4 +1,6 @@
-// invert.c
+/* invert.c
+
+   ACMI convergent inversion algorithm implementation. */
 
 #include "acmi.h"
 

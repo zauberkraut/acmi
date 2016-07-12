@@ -1,4 +1,6 @@
-// acmi.h
+/* acmi.h
+
+   Internal header for the ACMI project. */
 
 #ifndef ACMI_H
 #define ACMI_H

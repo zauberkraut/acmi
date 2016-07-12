@@ -1,0 +1,6 @@
+%%MatrixMarket matrix array real symmetric
+%2x2 Hilbert matrix
+2 2
+ 1
+ 0.5
+ 0.3333333333333333

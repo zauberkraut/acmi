@@ -1,4 +1,6 @@
-// kernels.cu
+/* kernels.cu
+
+   Custom ACMI CUDA kernels. */
 
 #include <assert.h>
 
