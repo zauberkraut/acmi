@@ -4,6 +4,12 @@
 
 #include <assert.h>
 
+extern "C" size_t cuMemAvail() {
+  size_t free, total;
+  assert(cudaMemGetInfo(&free, &total) == cudaSuccess);
+  return free;
+}
+
 extern "C" void* cuMalloc(size_t size) {
   void* p;
   assert(cudaMalloc(&p, size) == cudaSuccess);

@@ -197,6 +197,10 @@ int main(int argc, char* argv[]) {
 
   Mat mA = 0;
 
+  if (impl != CPU_IMPL) {
+    debug("%g MiB device memory available", mibibytes(cuMemAvail()));
+  }
+
   if (randDim) { // random mode
     if (!prngSeed) prngSeed = time(0); // if user supplied no seed, use time
     debug("seeding PRNG with %x", prngSeed);

@@ -42,7 +42,7 @@ void* MatElems(Mat m);
 void* MatCol(Mat m, int col);
 bool MatDev(Mat m);
 bool MatSymm(Mat m);
-bool MattSparse(Mat m);
+bool MatSparse(Mat m);
 double MatTrace(Mat m);
 void MatToDev(Mat m);
 void MatToHost(Mat m);
@@ -67,6 +67,7 @@ double norm(Mat mA);
 double luInvert(Mat mA, Mat mR);
 
 // kernels.c
+size_t cuMemAvail();
 void* cuMalloc(size_t size);
 void cuFree(void* p);
 void cuClear(void* p, size_t size);

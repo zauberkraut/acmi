@@ -1,5 +1,4 @@
 # ACMI
-======
 ***A***CMI's a ***C***onvergent ***M***atrix ***I***nverter.
 
 ACMI implements M. Altman's cubically-convergent, iterative algorithm to compute
@@ -10,7 +9,8 @@ matrix inverses. GPU-hosted computation is currently supported using CUDA.
 Dependencies:
   * GCC
   * OpenBLAS
-  * The CUDA SDK
+  * CUDA SDK
+  * cmocka for unit tests
 
 ---
 
@@ -19,6 +19,9 @@ To build:
 
 To build with debugging symbols:  
 `make debug`
+
+To run unit tests:  
+`make test`
 
 For usage instructions, run (after building):  
 `build/acmi`
@@ -35,7 +38,7 @@ https://www.cise.ufl.edu/research/sparse/matrices/
 ---
 
 TODO:
-  * Unit tests!
+  * More unit tests!
   * Return errors instead of calling fatal()
   * OpenCL support
   * Library build
