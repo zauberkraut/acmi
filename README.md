@@ -10,7 +10,7 @@ Dependencies:
   * GCC
   * OpenBLAS
   * CUDA SDK
-  * cmocka for unit tests
+  * CMocka for unit tests
 
 ---
 
