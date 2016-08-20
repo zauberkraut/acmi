@@ -26,10 +26,6 @@ struct Mat_ {
 // for generic marshalling of different FP precisions
 typedef union {uint16_t fp16; float fp32; double fp64;} Elem;
 
-// total host/device bytes allocated to matrix elements
-static size_t g_devTotalMatBytes = 0;
-static size_t g_hostTotalMatBytes = 0;
-
 /* Initializes a matrix without allocating element space. */
 static Mat MatEmptyNew(int n, bool doublePrec) {
   Mat m = malloc(sizeof(struct Mat_));
@@ -43,22 +39,10 @@ static Mat MatEmptyNew(int n, bool doublePrec) {
   return m;
 }
 
-/* Keeps track of matrix memory allocated. */
-static void updateTotalMatBytes(Mat m, bool alloc) {
-  size_t* total = m->dev ? &g_devTotalMatBytes : &g_hostTotalMatBytes;
-  if (alloc) *total += m->size;
-  else       *total -= m->size;
-  debug("%s %.3f MiB %dx%d matrix on %s; %.3f MiB %s",
-        alloc ? "allocating" : "freeing", mibibytes(m->size), m->n, m->n,
-        m->dev ? "device" : "host", mibibytes(*total),
-        alloc ? "total" : "remain");
-}
-
 /* Allocates space for a matrix' elements. */
 static void MatNewElems(Mat m, bool dev) {
   m->dev = dev;
   m->elems = dev ? cuMalloc(m->size) : malloc(m->size);
-  updateTotalMatBytes(m, true);
 }
 
 /* Makes a new, functional matrix with undefined entry values. */
@@ -76,11 +60,8 @@ Mat MatBuild(Mat m) {
 /* Frees a matrix' elements, but not the matrix struct itself. */
 static void MatFreeElems(Mat m) {
   assert(m->elems);
-
-  if (m->dev) cuFree(m->elems);
-  else        free(m->elems);
+  m->dev ? cuFree(m->elems) : free(m->elems);
   m->elems = 0;
-  updateTotalMatBytes(m, false);
 }
 
 /* Frees a matrix as well as its elements. */
@@ -94,8 +75,7 @@ void MatFree(Mat m) {
 
 /* Zeroes a matrix' entries. */
 void MatClear(Mat m) {
-  if (m->dev) cuClear(m->elems, m->size);
-  else        memset(m->elems, 0, m->size);
+  m->dev ? cuClear(m->elems, m->size) : memset(m->elems, 0, m->size);
 }
 
 /* Computes a pointer to any given element of a matrix. */
@@ -134,10 +114,11 @@ double MatTrace(Mat m) {
 void MatToDev(Mat m) {
   if (!m->dev) {
     debug("uploading matrix to device");
-    updateTotalMatBytes(m, false);
     void* hostElems = m->elems;
+    cuPin(hostElems, m->size);
     MatNewElems(m, true);
     cuUpload(m->elems, hostElems, m->size);
+    cuUnpin(hostElems);
     free(hostElems);
   }
 }
@@ -146,20 +127,44 @@ void MatToDev(Mat m) {
 void MatToHost(Mat m) {
   if (m->dev) {
     debug("downloading matrix from device");
-    updateTotalMatBytes(m, false);
     void* devElems = m->elems;
     MatNewElems(m, false);
+    cuPin(m->elems, m->size);
     cuDownload(m->elems, devElems, m->size);
+    cuUnpin(m->elems);
     cuFree(devElems);
   }
+}
+
+/* Converts a 32-bit matrix to 64-bit. */
+void MatWiden(Mat m) {
+  assert(!MatDouble(m));
+
+  struct Mat_ m32 = *m;
+  m->elemSize = 8; // now MatDouble(m) == true
+  m->size <<= 1;
+  m->pitch <<= 1;
+  MatNewElems(m, m->dev);
+  double* dst = m->elems;
+  float* src = m32.elems;
+
+  if (m->dev) {
+    cuWiden(dst, src, m32.n2);
+  } else {
+    for (int64_t i = 0; i < m32.n2; i++) {
+      dst[i] = src[i];
+    }
+  }
+
+  MatFreeElems(&m32);
 }
 
 /* Returns a matrix element. */
 double MatGet(Mat m, int row, int col) {
   assert(row >= 0 && row < m->n && col >= 0 && col < m->n);
   Elem e;
-  if (m->dev) cuDownload(&e, elemAddr(m, row, col), m->elemSize);
-  else        memcpy(&e, elemAddr(m, row, col), m->elemSize);
+  m->dev ? cuDownload(&e, elemAddr(m, row, col), m->elemSize)
+         : memcpy(&e, elemAddr(m, row, col), m->elemSize);
   return MatDouble(m) ? e.fp64 : e.fp32;
 }
 
@@ -169,8 +174,8 @@ void MatPut(Mat m, int row, int col, double elem) {
   Elem e;
   if (MatDouble(m)) e.fp64 = elem;
   else              e.fp32 = elem;
-  if (m->dev) cuUpload(elemAddr(m, row, col), &e, m->elemSize);
-  else        memcpy(elemAddr(m, row, col), &e, m->elemSize);
+  m->dev ? cuUpload(elemAddr(m, row, col), &e, m->elemSize)
+         : memcpy(elemAddr(m, row, col), &e, m->elemSize);
 }
 
 /* Loads a matrix of the given precision from a file. */
@@ -287,8 +292,7 @@ void MatWrite(Mat m, const char* path) {
   debug("writing %g MiB %dx%d matrix in %s format", mibibytes(MatSize(m)),
         n, n, m->sparse ? "coordinate" : "array");
 
-  if (m->sparse) mm_set_coordinate(&matCode);
-  else           mm_set_array(&matCode);
+  m->sparse ? mm_set_coordinate(&matCode) : mm_set_array(&matCode);
 
   mm_write_banner(out, matCode);
 
@@ -337,7 +341,7 @@ Mat MatRandDiagDom(int n, bool doublePrec, bool symm) {
     int col = symm ? row : 0;
     double rowSum = 0;
     // if symmetric, sum the elements before this diagonal
-    for (int i = 0; i < col; ++i) rowSum += fabs(MatGet(m, row, i));
+    for (int i = 0; i < col; ++i) rowSum += MatGet(m, row, i);
 
     for (; col < n; ++col) {
       if (row != col) { // diagonals are set below from the computed sum
@@ -353,7 +357,7 @@ Mat MatRandDiagDom(int n, bool doublePrec, bool symm) {
     }
 
     // make diagonal strictly greater than the sum of the other row entries
-    double diag = nextafter(rowSum, INFINITY);
+    double diag = rowSum + 1;
     MatPut(m, row, row, diag);
     m->trace += diag; // opportunistic trace computation
   }

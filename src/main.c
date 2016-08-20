@@ -13,7 +13,6 @@
 #include "acmi.h"
 
 const int MAX_PATH_LEN = 255;
-const Impl DEFAULT_IMPL = CUBLAS_IMPL;
 const double DEFAULT_MAX_ERROR = 0.00001;
 const int DEFAULT_MAX_STEP = 16;
 
@@ -81,22 +80,18 @@ void usage() {
          "  -q          Disable logging\n"
          "  -i          Print matrix file info and exit\n"
          "  -o <path>   Output computed matrix inverse to path\n"
-         "  -m <mode>   Select implementation to run (default: cublas)\n"
          "  -d          Enable double-precision floating-point matrix elements\n"
          "  -2          Employ quadratic instead of cubic convergence\n"
          "  -e <real>   Set max inversion error (default: %g)\n"
          "  -n <count>  Set max iteration to compute (default: %d)\n"
+         "  -S          Perform all computations in software without the GPU.\n"
          "Random matrix options:\n"
          "  -s          Generate symmetric matrix\n"
          "  -O <path>   Output generated, uninverted random matrix to path\n"
          "  -x <hex>    Set PRNG seed\n"
          "Currently, only Matrix Market files are are supported.\n"
          "To generate and invert a diagonally-dominant random matrix, enter the matrix\n"
-         "dimension prefixed by '?' instead of a filename.\n\n"
-         "Modes available through the -m option:\n"
-         "  cpu     Pure software BLAS implementation; no Nvidia GPU needed\n"
-         "  cublas  Nvidia CUDA BLAS implementation\n"
-         "  lu      Nvidia LU-factorization inversion without iteration\n",
+         "dimension prefixed by '?' instead of a filename.\n\n",
          DEFAULT_MAX_ERROR, DEFAULT_MAX_STEP);
   exit(0);
 }
@@ -104,7 +99,7 @@ void usage() {
 int main(int argc, char* argv[]) {
   bool infoMode = false;
   char* outPath = 0;
-  Impl impl = DEFAULT_IMPL;
+  bool softMode = false;
   bool doublePrec = false;
   bool quadConv = false;
   double maxError = DEFAULT_MAX_ERROR;
@@ -120,29 +115,19 @@ int main(int argc, char* argv[]) {
 
   opterr = 0;
   int opt;
-  while ((opt = getopt(argc, argv, "hqio:m:d2e:n:sO:x:")) != -1) {
+  while ((opt = getopt(argc, argv, "hqio:d2e:n:SsO:x:")) != -1) {
     switch (opt) {
-    case 'h': usage();              break;
-    case 'q': setVerbose(false);    break;
-    case 'i': infoMode = true;      break;
-    case 'd': doublePrec = true;      break;
-    case '2': quadConv = true;      break;
-    case 's': randSymm = true; break;
+    case 'h': usage();           break;
+    case 'q': setVerbose(false); break;
+    case 'i': infoMode = true;   break;
+    case 'd': doublePrec = true; break;
+    case '2': quadConv = true;   break;
+    case 'S': softMode = true;   break;
+    case 's': randSymm = true;   break;
 
     case 'o':
       checkWriteAccess(optarg);
       outPath = strndup(optarg, MAX_PATH_LEN);
-      break;
-    case 'm':
-      if (!strncmp(optarg, "cpu", 8)) {
-        impl = CPU_IMPL;
-      } else if (!strncmp(optarg, "cublas", 8)) {
-        impl = CUBLAS_IMPL;
-      } else if (!strncmp(optarg, "lu", 8)) {
-        impl = LU_IMPL;
-      } else {
-        fatal("supported modes are: \"cpu\", \"cublas\", \"lu\"");
-      }
       break;
     case 'e':
       maxError = parseFloat(0, 1,
@@ -197,7 +182,7 @@ int main(int argc, char* argv[]) {
 
   Mat mA = 0;
 
-  if (impl != CPU_IMPL) {
+  if (!softMode) {
     debug("%g MiB device memory available", mibibytes(cuMemAvail()));
   }
 
@@ -219,34 +204,30 @@ int main(int argc, char* argv[]) {
     mA = MatLoad(optarg, doublePrec, infoMode);
   }
 
+  const double matMiB = mibibytes(MatSize(mA));
+  debug("%g MiB/matrix; allocating %g MiB total", matMiB, 4*matMiB);
+
   if (infoMode) {
     debug("matrix info-only mode: terminating");
     exit(0);
   }
 
-  if (impl != CPU_IMPL) { // upload source matrix to GPU
+  if (!softMode) { // upload source matrix to GPU
     MatToDev(mA);
   }
-  Mat mR = MatBuild(mA); // initialize inverse matrix with the same parameters
 
   const char* zusatz = "";
-  if (quadConv)             zusatz = "quadratically";
-  else if (impl == LU_IMPL) zusatz = "using LU factorization";
+  if (quadConv) {
+    zusatz = "quadratically";
+  }
   debug("inverting %s %s...", randDim ? "random matrix" : optarg, zusatz);
 
-  switch (impl) {
-  case CUBLAS_IMPL:
+  if (!softMode) {
     initCublas();
-  case CPU_IMPL:
-    // invert using convergent sequence
-    altmanInvert(mA, mR, maxError, maxStep, quadConv);
-    break;
-  case LU_IMPL:
-    initCublas();
-    debug("inverting using cuBLAS LU-factorization");
-    luInvert(mA, mR);
-    break;
   }
+
+  Mat mR = 0;
+  altmanInvert(mA, &mR, maxError, maxStep, quadConv);
 
   if (outPath) { // optionally write inverted matrix
     MatToHost(mR); // if inverse is on the GPU, download it
@@ -258,13 +239,8 @@ int main(int argc, char* argv[]) {
   MatFree(mA);
   MatFree(mR);
 
-  switch (impl) {
-  case CUBLAS_IMPL:
-  case LU_IMPL:
+  if (!softMode) {
     shutDownCublas();
-    break;
-  default:
-    break;
   }
 
   return 0;

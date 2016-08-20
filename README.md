@@ -2,14 +2,17 @@
 ***A***CMI's a ***C***onvergent ***M***atrix ***I***nverter.
 
 ACMI implements M. Altman's cubically-convergent, iterative algorithm to compute
-matrix inverses. GPU-hosted computation is currently supported using CUDA.
+matrix inverses. GPU-hosted computation is currently supported using CUDA. ACMI
+is being developed on the Pascal architecture.
 
 ---
 
 Dependencies:
+  * CUDA SDK 8.0
   * GCC
+  * GNU Make
   * OpenBLAS
-  * CUDA SDK
+  * LAPACKE
   * CMocka for unit tests
 
 ---
@@ -39,7 +42,6 @@ https://www.cise.ufl.edu/research/sparse/matrices/
 
 TODO:
   * More unit tests!
-  * Return errors instead of calling fatal()
   * OpenCL support
   * Library build
   * Fix makefile quirks

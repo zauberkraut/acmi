@@ -15,7 +15,6 @@
 #include <time.h>
 
 static const int MAX_MAT_DIM = 32768;
-typedef enum {CPU_IMPL, CUBLAS_IMPL, LU_IMPL} Impl;
 
 struct Mat_;
 typedef struct Mat_* Mat;
@@ -46,6 +45,7 @@ bool MatSparse(Mat m);
 double MatTrace(Mat m);
 void MatToDev(Mat m);
 void MatToHost(Mat m);
+void MatWiden(Mat m);
 double MatGet(Mat m, int row, int col);
 void MatPut(Mat m, int row, int col, double elem);
 Mat MatLoad(const char* path, bool doublePrec, bool attrOnly);
@@ -54,17 +54,18 @@ Mat MatRandDiagDom(int n, bool doublePrec, bool symm);
 void MatDebug(Mat m);
 
 // invert.c
-double altmanInvert(Mat mA, Mat mR, double maxError, int maxStep,
+double altmanInvert(Mat mA, Mat *mR, double maxError, int maxStep,
                     bool quadConv);
 
 // blas.c
 void initCublas();
 void shutDownCublas();
+void transpose(double alpha, Mat mA, Mat mT);
 void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC);
-void gemmT(double alpha, Mat mA, Mat mB, double beta, Mat mC);
 void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC);
 double norm(Mat mA);
-double luInvert(Mat mA, Mat mR);
+double normSubFromI(Mat mA);
+void add3I(Mat mA);
 
 // kernels.c
 size_t cuMemAvail();
@@ -73,5 +74,11 @@ void cuFree(void* p);
 void cuClear(void* p, size_t size);
 void cuUpload(void* devDst, const void* hostSrc, size_t size);
 void cuDownload(void* hostDst, const void* devSrc, size_t size);
+void cuPin(void* p, size_t size);
+void cuUnpin(void* p);
+void cuWiden(double* dst, float* src, int64_t n2);
+double cuNorm(void* elems, int64_t n2, int elemSize);
+double cuNormSubFromI(void* elems, int n, int elemSize);
+void cuAdd3I(void* elems, int n, int elemSize);
 
 #endif
