@@ -2,7 +2,7 @@ name = acmi
 root = $(shell pwd -P)
 src = $(root)/src
 build = $(root)/build
-bin = $(build)/$(name)
+bin = $(root)/$(name)
 testbin = $(build)/test
 
 cc = gcc
@@ -41,4 +41,4 @@ test: $(testbin)
 	$(^)
 
 clean:
-	rm -fr $(build)
+	rm -fr $(build) $(bin)

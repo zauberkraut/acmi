@@ -54,7 +54,7 @@ Mat MatRandDiagDom(int n, bool doublePrec, bool symm);
 void MatDebug(Mat m);
 
 // invert.c
-double altmanInvert(Mat mA, Mat *mR, double maxError, int maxStep,
+double altmanInvert(Mat mA, Mat *mRp, double errLimit, int msLimit,
                     bool quadConv);
 
 // blas.c
@@ -63,6 +63,7 @@ void shutDownCublas();
 void transpose(double alpha, Mat mA, Mat mT);
 void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC);
 void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC);
+void setDiag(Mat mA, double alpha);
 double norm(Mat mA);
 double normSubFromI(Mat mA);
 void add3I(Mat mA);
@@ -77,6 +78,7 @@ void cuDownload(void* hostDst, const void* devSrc, size_t size);
 void cuPin(void* p, size_t size);
 void cuUnpin(void* p);
 void cuWiden(double* dst, float* src, int64_t n2);
+void cuSetDiag(void* elems, double alpha, int n, int elemSize);
 double cuNorm(void* elems, int64_t n2, int elemSize);
 double cuNormSubFromI(void* elems, int n, int elemSize);
 void cuAdd3I(void* elems, int n, int elemSize);

@@ -13,8 +13,9 @@
 #include "acmi.h"
 
 const int MAX_PATH_LEN = 255;
-const double DEFAULT_MAX_ERROR = 0.00001;
-const int DEFAULT_MAX_STEP = 16;
+const double DEFAULT_ERR_LIMIT = 0.00001;
+const int DEFAULT_MS_LIMIT = 60000; // one minute
+const int MAX_MS_LIMIT = 86400000;  // one day
 
 extern char *optarg;
 extern int optind, opterr, optopt;
@@ -82,8 +83,8 @@ void usage() {
          "  -o <path>   Output computed matrix inverse to path\n"
          "  -d          Enable double-precision floating-point matrix elements\n"
          "  -2          Employ quadratic instead of cubic convergence\n"
-         "  -e <real>   Set max inversion error (default: %g)\n"
-         "  -n <count>  Set max iteration to compute (default: %d)\n"
+         "  -e <real>   Set inversion error limit (default: %g)\n"
+         "  -t <ms>     Set inversion time limit in ms (default: %d ms)\n"
          "  -S          Perform all computations in software without the GPU.\n"
          "Random matrix options:\n"
          "  -s          Generate symmetric matrix\n"
@@ -92,7 +93,7 @@ void usage() {
          "Currently, only Matrix Market files are are supported.\n"
          "To generate and invert a diagonally-dominant random matrix, enter the matrix\n"
          "dimension prefixed by '?' instead of a filename.\n\n",
-         DEFAULT_MAX_ERROR, DEFAULT_MAX_STEP);
+         DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT);
   exit(0);
 }
 
@@ -102,8 +103,8 @@ int main(int argc, char* argv[]) {
   bool softMode = false;
   bool doublePrec = false;
   bool quadConv = false;
-  double maxError = DEFAULT_MAX_ERROR;
-  int maxStep = DEFAULT_MAX_STEP;
+  double errLimit = DEFAULT_ERR_LIMIT;
+  int msLimit = DEFAULT_MS_LIMIT;
   int randDim = 0;
   bool randSymm = false;
   char* randOutPath = 0;
@@ -115,7 +116,7 @@ int main(int argc, char* argv[]) {
 
   opterr = 0;
   int opt;
-  while ((opt = getopt(argc, argv, "hqio:d2e:n:SsO:x:")) != -1) {
+  while ((opt = getopt(argc, argv, "hqio:d2e:t:SsO:x:")) != -1) {
     switch (opt) {
     case 'h': usage();           break;
     case 'q': setVerbose(false); break;
@@ -130,11 +131,11 @@ int main(int argc, char* argv[]) {
       outPath = strndup(optarg, MAX_PATH_LEN);
       break;
     case 'e':
-      maxError = parseFloat(0, 1,
-                            "max error measure must be a real on [0, 1)");
+      errLimit = parseFloat(0, 1,
+                            "error limit must be a real on [0, 1)");
       break;
-    case 'n':
-      maxStep = (int)parseInt(10, 0, 1000, "invalid step limit");
+    case 't':
+      msLimit = (int)parseInt(10, 0, MAX_MS_LIMIT, "invalid time limit");
       break;
     case 'O':
       checkWriteAccess(optarg);
@@ -171,7 +172,7 @@ int main(int argc, char* argv[]) {
     fatal("unexpected argument: %s", argv[optind+1]);
   }
   if (optarg[0] == '?') { // random mode
-    ++optarg; // parse remainder of argument as the matrix dimension
+    optarg++; // parse remainder of argument as the matrix dimension
     randDim = (int)parseInt(10, 2, MAX_MAT_DIM,
                             "invalid random matrix dimension");
   } else {
@@ -218,16 +219,16 @@ int main(int argc, char* argv[]) {
 
   const char* zusatz = "";
   if (quadConv) {
-    zusatz = "quadratically";
+    zusatz = "quadratically ";
   }
-  debug("inverting %s %s...", randDim ? "random matrix" : optarg, zusatz);
+  debug("%sinverting %s...", zusatz, randDim ? "random matrix" : optarg);
 
   if (!softMode) {
     initCublas();
   }
 
   Mat mR = 0;
-  altmanInvert(mA, &mR, maxError, maxStep, quadConv);
+  altmanInvert(mA, &mR, errLimit, msLimit, quadConv);
 
   if (outPath) { // optionally write inverted matrix
     MatToHost(mR); // if inverse is on the GPU, download it

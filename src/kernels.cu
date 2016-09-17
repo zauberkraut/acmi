@@ -51,6 +51,24 @@ extern "C" void cuWiden(double* dst, float* src, int64_t n2) {
   assert(cudaGetLastError() == cudaSuccess);
 }
 
+static __global__ void kernSetDiag32(float* elems, double alpha, int n) {
+  for (int i = 0; i < n; i++) {
+    elems[i*n + i] = alpha;
+  }
+}
+
+static __global__ void kernSetDiag64(double* elems, double alpha, int n) {
+  for (int i = 0; i < n; i++) {
+    elems[i*n + i] = alpha;
+  }
+}
+
+extern "C" void cuSetDiag(void* elems, double alpha, int n, int elemSize) {
+  elemSize == 8 ? kernSetDiag64<<<1, 1>>>((double*)elems, alpha, n)
+                : kernSetDiag32<<<1, 1>>>((float*)elems, alpha, n);
+  assert(cudaGetLastError() == cudaSuccess);
+}
+
 __device__ double d_froNorm;
 
 static __global__ void kern32Norm(const float* a, const int64_t n2) {
@@ -114,7 +132,7 @@ extern "C" double cuNormSubFromI(void* elems, int n, int elemSize) {
 }
 
 static __global__ void kern32Add3I(float* a, int n) {
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < n; i++) {
     unsigned j = i*n + i;
     float e = a[j];
     a[j] = e + 3.0f;
@@ -122,7 +140,7 @@ static __global__ void kern32Add3I(float* a, int n) {
 }
 
 static __global__ void kern64Add3I(double* a, int n) {
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < n; i++) {
     int j = i*n + i;
     double e = a[j];
     a[j] = e + 3.0;

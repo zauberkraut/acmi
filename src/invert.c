@@ -5,9 +5,18 @@
 #include "acmi.h"
 
 const double POSDEF_STEP_THRESH = 5;
+const double MAX_CONV_RATE_FACTOR = 10;
 
-static double traceError(double alpha, Mat mA) {
+static double traceErr(double alpha, Mat mA) {
   return sqrt(MatN(mA) + 1 - 2*alpha*MatTrace(mA));
+}
+
+static struct timespec g_startTime;
+static int msSince() {
+  struct timespec time;
+  clock_gettime(CLOCK_MONOTONIC, &time);
+  return (time.tv_sec - g_startTime.tv_sec)*1000 +
+    (time.tv_nsec - g_startTime.tv_nsec)/1.e6;
 }
 
 static void swap(Mat* mp, Mat* np) {
@@ -16,61 +25,60 @@ static void swap(Mat* mp, Mat* np) {
   *np = t;
 }
 
-double altmanInvert(Mat mA, Mat* mRp, double maxError, int maxStep,
+double altmanInvert(Mat mA, Mat* mRp, double errLimit, int msLimit,
                     bool quadConv) {
+  clock_gettime(CLOCK_MONOTONIC, &g_startTime);
+
   debug("initializing work matrices...");
   Mat mAR = MatBuild(mA), mX = MatBuild(mA);
 
-  struct timespec startTime, endTime;
-  clock_gettime(CLOCK_MONOTONIC, &startTime);
-
-  const double normA = norm(mA);
-  const double alpha = 1/normA;
+  const double alpha = 1/norm(mA);
   debug("computed alpha = %g", alpha);
 
-  bool posDef = true;
   Mat mR = MatBuild(mA);
   MatClear(mR);
-  for (int i = 0; i < MatN(mR); ++i) {
-    MatPut(mR, i, i, alpha);
-  }
+  setDiag(mR, alpha);
+  bool posDef = true;
+  double err = traceErr(alpha, mA);
 
-  gemm(1, mA, mR, 0, mAR);
+  for (int iter = 0; msSince() < msLimit; iter++) {
+    gemm(1, mA, mR, 0, mAR);
+    // TODO: replace with sweep squares
+    if (iter || !posDef) {
+      err = normSubFromI(mAR);
+    }
+    static double prevErr = INFINITY;
+    // rate of convergence
+    const double convRate = err/pow(prevErr, 3);
 
-  double error, prevError = INFINITY;
-  error = traceError(alpha, mA);
-
-  int step = 0;
-  for (; step < maxStep && error > maxError; ++step) {
-    debug("computed approximate inverse R_%d with error measure %g", step,
-          error);
-
-    if (error > prevError) {
-      debug("R_%d diverged", step);
-      // back up R to its previous value
-      swap(&mX, &mR);
-      step--;
-
-      if (step < POSDEF_STEP_THRESH && posDef) {
-        debug("retrying with non-positive-definite R0...");
-        posDef = false;
-        transpose(alpha, mA, mR);
-        gemm(1, mA, mR, 0, mAR);
-        prevError = INFINITY;
-        // replace with sweep squares
-        error = normSubFromI(mAR);
-        step = -1;
-        continue;
-      } else if (!MatDouble(mA)) {
-        debug("retrying with double-precision...");
-        MatWiden(mA); MatWiden(mR); MatWiden(mAR); MatWiden(mX);
-      } else {
-        warn("R_%d is the best we can do", step);
-        break;
-      }
+    debug("%sR%d: err=%11g, μ=%11g", iter < 10 ? " " : "", iter, err, convRate);
+    if (err <= errLimit) {
+      break;
     }
 
-    prevError = error;
+    if (posDef && err > prevErr && iter < POSDEF_STEP_THRESH) {
+      debug("diverged, retrying with non-positive-definite R0...");
+      swap(&mX, &mR); // back up R to its previous value
+      posDef = false;
+      transpose(alpha, mA, mR);
+      prevErr = INFINITY;
+      iter = -1;
+      continue;
+    } else if (!MatDouble(mA) && convRate > 1) {
+      debug("diverging, extending to double precision...");
+      // TODO: MatExtend
+      MatWiden(mA); MatWiden(mR); MatWiden(mAR); MatWiden(mX);
+      prevErr = INFINITY;   // our 32-bit error might have been truncated
+      iter--;
+      continue;
+    } else if (err > prevErr) {
+      warn("diverged, R%d is the best we can do", iter - 1);
+      swap(&mX, &mR); // back up R to its previous value
+      err = prevErr;
+      break;
+    }
+
+    prevErr = err;
 
     if (quadConv) {
       gemm(1, mR, mAR, 0, mX);
@@ -85,29 +93,18 @@ double altmanInvert(Mat mA, Mat* mRp, double maxError, int maxStep,
       gemm(1, mR, mX, 0, mAR);
       // put the new R where it belongs; AR now has the old R
       swap(&mR, &mAR);
+      // put old R in X, junk in AR
+      swap(&mX, &mAR);
     }
-
-    // new AR
-    gemm(1, mA, mR, 0, mX);
-    // compute error
-    error = normSubFromI(mX);
-    // swap mX and mAR so the former has the old R and the latter the new AR
-    swap(&mX, &mAR);
   }
 
-  clock_gettime(CLOCK_MONOTONIC, &endTime);
-  double invTimeS = endTime.tv_sec - startTime.tv_sec +
-    (endTime.tv_nsec - startTime.tv_nsec)/1.e9;
-
-  debug("inversion halted after %g seconds at R_%d with error measure %g",
-        invTimeS, step, error);
-
-  if (error > maxError) {
-    warn("failed to achieve target error measure %g within %d iterations",
-         maxError, step);
+  debug("inversion halted after %g seconds", msSince()/1000.);
+  if (err > errLimit) {
+    warn("failed to converge to error < %g within %g seconds",
+         errLimit, msLimit/1000.);
   }
 
   MatFree(mAR); MatFree(mX);
   *mRp = mR;
-  return error;
+  return err;
 }

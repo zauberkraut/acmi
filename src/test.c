@@ -26,8 +26,8 @@ static void testMatBasic(void** state) {
   assert_false(MatSparse(m));
 
   MatClear(m);
-  for (int row = 0; row < n; ++row) {
-    for (int col = 0; col < n; ++col) {
+  for (int row = 0; row < n; row++) {
+    for (int col = 0; col < n; col++) {
       assert_true(MatGet(m, row, col) == 0.);
     }
   }
@@ -88,8 +88,8 @@ static void testMatRandSymmetry(void** state) {
 
   Mat m = MatRandDiagDom(n, false, true);
 
-  for (int row = 0; row < n; ++row) {
-    for (int col = row + 1; col < n; ++col) {
+  for (int row = 0; row < n; row++) {
+    for (int col = row + 1; col < n; col++) {
       assert_true(MatGet(m, row, col) == MatGet(m, col, row));
     }
   }

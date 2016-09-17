@@ -26,8 +26,8 @@ void transpose(double alpha, Mat mA, Mat mT) {
   const int n = MatN(mA);
   assert(n == MatN(mT));
 
-  for (int row = 0; row < n; ++row) {
-    for (int col = row; col < n; ++col) {
+  for (int row = 0; row < n; row++) {
+    for (int col = row; col < n; col++) {
       if (row == col) {
         MatPut(mT, row, col, alpha*MatGet(mA, row, col));
       } else {
@@ -81,7 +81,7 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
                   MatElems(mA), n, &b, MatElems(mB), n, MatElems(mC), n);
     }
   } else { // software
-    for (int col = 0; col < n; ++col) {
+    for (int col = 0; col < n; col++) {
       if (mB == mC) {
         if (MatDouble(mA)) {
           cblas_dscal(n, beta, MatCol(mB, col), 1);
@@ -100,6 +100,16 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
           cblas_saxpy(n, beta, MatCol(mB, col), 1, MatCol(mC, col), 1);
         }
       }
+    }
+  }
+}
+
+void setDiag(Mat mA, double alpha) {
+  if (MatDev(mA)) {
+    cuSetDiag(MatElems(mA), alpha, MatN(mA), MatElemSize(mA));
+  } else {
+    for (int i = 0; i < MatN(mA); i++) {
+      MatPut(mA, i, i, alpha);
     }
   }
 }
@@ -125,8 +135,8 @@ double normSubFromI(Mat mA) {
     return cuNormSubFromI(MatElems(mA), MatN(mA), MatElemSize(mA));
   } else {
     double sum = 0;
-    for (int row = 0; row < MatN(mA); ++row) {
-      for (int col = 0; col < MatN(mA); ++col) {
+    for (int row = 0; row < MatN(mA); row++) {
+      for (int col = 0; col < MatN(mA); col++) {
         double e = (row == col) - MatGet(mA, row, col);
         sum += e*e;
       }
@@ -139,7 +149,7 @@ void add3I(Mat mA) {
   if (MatDev(mA)) {
     cuAdd3I(MatElems(mA), MatN(mA), MatElemSize(mA));
   } else {
-    for (int diag = 0; diag < MatN(mA); ++diag) {
+    for (int diag = 0; diag < MatN(mA); diag++) {
       MatPut(mA, diag, diag, 3 + MatGet(mA, diag, diag));
     }
   }

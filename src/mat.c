@@ -102,7 +102,7 @@ double MatTrace(Mat m) {
   if (isnan(m->trace)) {
     debug("computing matrix trace");
     m->trace = 0;
-    for (int i = 0; i < m->n; ++i) {
+    for (int i = 0; i < m->n; i++) {
       m->trace += MatGet(m, i, i);
     }
   }
@@ -241,7 +241,7 @@ Mat MatLoad(const char* path, bool doublePrec, bool attrOnly) {
     const char* parseStr = mm_is_pattern(matCode) ? "%d %d\n" : "%d %d %lf\n";
     const int paramsPerElem = mm_is_pattern(matCode) ? 2 : 3;
 
-    for (int i = 0; i < nEntries; ++i) {
+    for (int i = 0; i < nEntries; i++) {
       int row, col;
       double elem = 1;
       if (fscanf(in, parseStr, &row, &col, &elem) != paramsPerElem) {
@@ -254,10 +254,10 @@ Mat MatLoad(const char* path, bool doublePrec, bool attrOnly) {
       }
     }
   } else { // dense array encoding
-    for (int col = 0; col < n; ++col) {
+    for (int col = 0; col < n; col++) {
       int row = symmOrSkew ? col : 0;
 
-      for (; row < n; ++row) {
+      for (; row < n; row++) {
         double elem;
         fscanf(in, "%lf\n", &elem);
         MatPut(m, row, col, elem);
@@ -300,17 +300,19 @@ void MatWrite(Mat m, const char* path) {
     // count nonzero elements
     // TODO: count during next loop instead and write the size later
     int64_t nNonzero = 0;
-    for (int row = 0; row < n; ++row) {
-      for (int col = 0; col < n; ++col) {
-        if (MatGet(m, row, col) != 0) ++nNonzero;
+    for (int row = 0; row < n; row++) {
+      for (int col = 0; col < n; col++) {
+        if (MatGet(m, row, col) != 0) {
+          nNonzero++;
+        }
       }
     }
 
     debug("writing %ld nonzero elements", nNonzero);
     mm_write_mtx_crd_size(out, n, n, nNonzero);
 
-    for (int col = 0; col < n; ++col) {
-      for (int row = 0; row < n; ++row) {
+    for (int col = 0; col < n; col++) {
+      for (int row = 0; row < n; row++) {
         double elem = MatGet(m, row, col);
         if (elem != 0) {
           fprintf(out, "%d %d %g\n", row + 1, col + 1, elem);
@@ -320,8 +322,8 @@ void MatWrite(Mat m, const char* path) {
   } else { // dense, array output
     mm_write_mtx_array_size(out, n, n);
 
-    for (int col = 0; col < n; ++col) {
-      for (int row = 0; row < n; ++row) {
+    for (int col = 0; col < n; col++) {
+      for (int row = 0; row < n; row++) {
         fprintf(out, "%g\n", MatGet(m, row, col));
       }
     }
@@ -337,13 +339,13 @@ Mat MatRandDiagDom(int n, bool doublePrec, bool symm) {
   m->symm = symm;
   m->trace = 0;
 
-  for (int row = 0; row < n; ++row) {
+  for (int row = 0; row < n; row++) {
     int col = symm ? row : 0;
     double rowSum = 0;
     // if symmetric, sum the elements before this diagonal
-    for (int i = 0; i < col; ++i) rowSum += MatGet(m, row, i);
+    for (int i = 0; i < col; i++) rowSum += MatGet(m, row, i);
 
-    for (; col < n; ++col) {
+    for (; col < n; col++) {
       if (row != col) { // diagonals are set below from the computed sum
         double absElem = (double)(rand() % n);
         double signE = rand() % 2 ? 1 : -1; // random element sign
