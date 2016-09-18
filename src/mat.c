@@ -27,12 +27,12 @@ struct Mat_ {
 typedef union {uint16_t fp16; float fp32; double fp64;} Elem;
 
 /* Initializes a matrix without allocating element space. */
-static Mat MatEmptyNew(int n, bool doublePrec) {
+static Mat MatEmptyNew(int n, int elemSize) {
   Mat m = malloc(sizeof(struct Mat_));
   memset(m, 0, sizeof(struct Mat_));
   m->n = n;
   m->n2 = (int64_t)n*n;
-  m->elemSize = doublePrec ? 8 : 4;
+  m->elemSize = elemSize;
   m->size = m->n2 * m->elemSize;
   m->pitch = n * m->elemSize;
   m->trace = NAN;
@@ -46,15 +46,15 @@ static void MatNewElems(Mat m, bool dev) {
 }
 
 /* Makes a new, functional matrix with undefined entry values. */
-Mat MatNew(int n, bool doublePrec, bool dev) {
-  Mat m = MatEmptyNew(n, doublePrec);
+Mat MatNew(int n, int elemSize, bool dev) {
+  Mat m = MatEmptyNew(n, elemSize);
   MatNewElems(m, dev);
   return m;
 }
 
 /* Same as MatNew(), but sources parameters from a given template matrix. */
 Mat MatBuild(Mat m) {
-  return MatNew(m->n, MatDouble(m), m->dev);
+  return MatNew(m->n, MatElemSize(m), m->dev);
 }
 
 /* Frees a matrix' elements, but not the matrix struct itself. */
@@ -87,7 +87,6 @@ static inline void* elemAddr(Mat m, int row, int col) {
 // getters
 int MatN(Mat m) { return m->n; }
 int64_t MatN2(Mat m) { return m->n2; }
-bool MatDouble(Mat m) { return m->elemSize == 8; }
 int MatElemSize(Mat m) { return m->elemSize; }
 size_t MatSize(Mat m) { return m->size; }
 size_t MatPitch(Mat m) { return m->pitch; }
@@ -137,11 +136,11 @@ void MatToHost(Mat m) {
 }
 
 /* Converts a 32-bit matrix to 64-bit. */
-void MatWiden(Mat m) {
-  assert(!MatDouble(m));
+void MatPromote(Mat m) {
+  assert(MatElemSize(m) != 16);
 
   struct Mat_ m32 = *m;
-  m->elemSize = 8; // now MatDouble(m) == true
+  m->elemSize = 8; // TODO: double double
   m->size <<= 1;
   m->pitch <<= 1;
   MatNewElems(m, m->dev);
@@ -149,7 +148,7 @@ void MatWiden(Mat m) {
   float* src = m32.elems;
 
   if (m->dev) {
-    cuWiden(dst, src, m32.n2);
+    cuPromote(dst, src, m32.n2);
   } else {
     for (int64_t i = 0; i < m32.n2; i++) {
       dst[i] = src[i];
@@ -165,21 +164,21 @@ double MatGet(Mat m, int row, int col) {
   Elem e;
   m->dev ? cuDownload(&e, elemAddr(m, row, col), m->elemSize)
          : memcpy(&e, elemAddr(m, row, col), m->elemSize);
-  return MatDouble(m) ? e.fp64 : e.fp32;
+  return 8 == MatElemSize(m) ? e.fp64 : e.fp32;
 }
 
 /* Sets a matrix element. */
 void MatPut(Mat m, int row, int col, double elem) {
   assert(row >= 0 && row < m->n && col >= 0 && col < m->n);
   Elem e;
-  if (MatDouble(m)) e.fp64 = elem;
-  else              e.fp32 = elem;
+  if (8 == MatElemSize(m)) e.fp64 = elem;
+  else                     e.fp32 = elem;
   m->dev ? cuUpload(elemAddr(m, row, col), &e, m->elemSize)
          : memcpy(elemAddr(m, row, col), &e, m->elemSize);
 }
 
 /* Loads a matrix of the given precision from a file. */
-Mat MatLoad(const char* path, bool doublePrec, bool attrOnly) {
+Mat MatLoad(const char* path, int elemSize, bool attrOnly) {
   FILE* in = fopen(path, "r");
   if (!in) fatal("couldn't open %s", path);
 
@@ -212,7 +211,7 @@ Mat MatLoad(const char* path, bool doublePrec, bool attrOnly) {
   }
 
   int64_t n2 = (int64_t)n*n;
-  size_t size = n2*(doublePrec ? 8 : 4);
+  size_t size = n2*elemSize;
   debug("matrix is %dx%d and %.3f MiB in size", n, n, mibibytes(size));
 
   double sparsity = INFINITY;
@@ -231,7 +230,7 @@ Mat MatLoad(const char* path, bool doublePrec, bool attrOnly) {
     return 0;
   }
 
-  Mat m = MatNew(n, doublePrec, false);
+  Mat m = MatNew(n, elemSize, false);
   m->symm = mm_is_symmetric(matCode);
   m->sparse = sparsity < SPARSITY_THRESHOLD;
   const int symmSign = skew ? -1 : 1;
@@ -334,8 +333,8 @@ void MatWrite(Mat m, const char* path) {
 
 /* Generates a random, invertible, diagonally-dominant matrix, the diagonal
    entries of which shall be positive to avoid ill-conditioning. */
-Mat MatRandDiagDom(int n, bool doublePrec, bool symm) {
-  Mat m = MatNew(n, doublePrec, false);
+Mat MatRandDiagDom(int n, int elemSize, bool symm) {
+  Mat m = MatNew(n, elemSize, false);
   m->symm = symm;
   m->trace = 0;
 

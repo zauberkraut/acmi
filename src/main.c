@@ -13,6 +13,9 @@
 #include "acmi.h"
 
 const int MAX_PATH_LEN = 255;
+const int MIN_ELEM_BITS = 32;
+const int MAX_ELEM_BITS = 128;
+const int DEFAULT_ELEM_SIZE = 4;
 const double DEFAULT_ERR_LIMIT = 0.00001;
 const int DEFAULT_MS_LIMIT = 60000; // one minute
 const int MAX_MS_LIMIT = 86400000;  // one day
@@ -27,7 +30,7 @@ long parseInt(int radix, long min, long max, const char* errMsg) {
   char* parsePtr = 0;
   long l = strtol(optarg, &parsePtr, radix);
   if (parsePtr - optarg != strlen(optarg) || l < min || l > max ||
-      errno == ERANGE) {
+      ERANGE == errno) {
     fatal(errMsg);
   }
   return l;
@@ -37,7 +40,7 @@ double parseFloat(double min, double maxEx, const char* errMsg) {
   char* parsePtr;
   double v = strtof(optarg, &parsePtr);
   if (parsePtr - optarg != strlen(optarg) || v < min || v >= maxEx ||
-      errno == ERANGE) {
+      ERANGE == errno) {
     fatal(errMsg);
   }
   return v;
@@ -52,7 +55,7 @@ void checkWriteAccess(const char* path) {
 
   // reject if path is a directory
   DIR* dir = 0;
-  if (path[len-1] == '/' || path[len-1] == '\\' || (dir = opendir(path))) {
+  if ('/' == path[len-1] || '\\' == path[len-1] || (dir = opendir(path))) {
     if (dir) {
       closedir(dir);
     }
@@ -81,7 +84,7 @@ void usage() {
          "  -q          Disable logging\n"
          "  -i          Print matrix file info and exit\n"
          "  -o <path>   Output computed matrix inverse to path\n"
-         "  -d          Enable double-precision floating-point matrix elements\n"
+         "  -p <#bits>  Set floating-point matrix element precision (32, 64 or 128; default: %d)\n"
          "  -2          Employ quadratic instead of cubic convergence\n"
          "  -e <real>   Set inversion error limit (default: %g)\n"
          "  -t <ms>     Set inversion time limit in ms (default: %d ms)\n"
@@ -93,7 +96,7 @@ void usage() {
          "Currently, only Matrix Market files are are supported.\n"
          "To generate and invert a diagonally-dominant random matrix, enter the matrix\n"
          "dimension prefixed by '?' instead of a filename.\n\n",
-         DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT);
+         8*DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT);
   exit(0);
 }
 
@@ -101,7 +104,7 @@ int main(int argc, char* argv[]) {
   bool infoMode = false;
   char* outPath = 0;
   bool softMode = false;
-  bool doublePrec = false;
+  int elemSize = DEFAULT_ELEM_SIZE;
   bool quadConv = false;
   double errLimit = DEFAULT_ERR_LIMIT;
   int msLimit = DEFAULT_MS_LIMIT;
@@ -110,18 +113,20 @@ int main(int argc, char* argv[]) {
   char* randOutPath = 0;
   unsigned prngSeed = 0;
 
-  if (argc == 1) {
+  if (1 == argc) {
     usage();
   }
 
   opterr = 0;
   int opt;
-  while ((opt = getopt(argc, argv, "hqio:d2e:t:SsO:x:")) != -1) {
+  while ((opt = getopt(argc, argv, "hqio:p:2e:t:SsO:x:")) != -1) {
     switch (opt) {
+      int elemBits;
+      double pow2;
+
     case 'h': usage();           break;
     case 'q': setVerbose(false); break;
     case 'i': infoMode = true;   break;
-    case 'd': doublePrec = true; break;
     case '2': quadConv = true;   break;
     case 'S': softMode = true;   break;
     case 's': randSymm = true;   break;
@@ -129,6 +134,16 @@ int main(int argc, char* argv[]) {
     case 'o':
       checkWriteAccess(optarg);
       outPath = strndup(optarg, MAX_PATH_LEN);
+      break;
+    case 'p':
+      elemBits =
+        (int)parseInt(10, MIN_ELEM_BITS, MAX_ELEM_BITS,
+                      "invalid floating-point precision");
+      pow2 = log2(elemBits);
+      if (pow2 != floor(pow2)) {
+        fatal("invalid floating-point precision");
+      }
+      elemSize = elemBits/8;
       break;
     case 'e':
       errLimit = parseFloat(0, 1,
@@ -165,13 +180,13 @@ int main(int argc, char* argv[]) {
 
   optarg = argv[optind];
   // enforce exactly one non-option parameter describing the matrix to invert
-  if (!optarg || strlen(optarg) == 0) {
+  if (!optarg || 0 == strlen(optarg)) {
     fatal("missing input file");
   }
   if (optind < argc - 1) {
     fatal("unexpected argument: %s", argv[optind+1]);
   }
-  if (optarg[0] == '?') { // random mode
+  if ('?' == optarg[0]) { // random mode
     optarg++; // parse remainder of argument as the matrix dimension
     randDim = (int)parseInt(10, 2, MAX_MAT_DIM,
                             "invalid random matrix dimension");
@@ -192,9 +207,9 @@ int main(int argc, char* argv[]) {
     debug("seeding PRNG with %x", prngSeed);
     srand(prngSeed);
 
-    debug("generating %d-bit random %dx%d%s matrix...", doublePrec ? 64 : 32,
+    debug("generating %d-bit random %dx%d%s matrix...", 8*elemSize,
           randDim, randDim, randSymm ? " symmetric" : "");
-    mA = MatRandDiagDom(randDim, doublePrec, randSymm);
+    mA = MatRandDiagDom(randDim, elemSize, randSymm);
 
     if (randOutPath) { // optionally write randomly-generated matrix
       MatWrite(mA, randOutPath);
@@ -202,7 +217,7 @@ int main(int argc, char* argv[]) {
     }
   } else { // load matrix from given file
     debug("loading %s", optarg);
-    mA = MatLoad(optarg, doublePrec, infoMode);
+    mA = MatLoad(optarg, elemSize, infoMode);
   }
 
   const double matMiB = mibibytes(MatSize(mA));

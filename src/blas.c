@@ -46,7 +46,7 @@ void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
   const int n = MatN(mA);
 
   if (MatDev(mA)) { // matrix elements reside in device memory
-    if (MatDouble(mA)) { // entries are double-precision
+    if (8 == MatElemSize(mA)) { // entries are double-precision
       cublasDgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
                   MatElems(mA), n, MatElems(mB), n, &beta, MatElems(mC), n);
     } else { // entries are single-precision
@@ -55,7 +55,7 @@ void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
                   MatElems(mA), n, MatElems(mB), n, &b, MatElems(mC), n);
     }
   } else { // matrix elements reside in host memory
-    if (MatDouble(mA)) {
+    if (8 == MatElemSize(mA)) {
       cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n, n, alpha,
                   MatElems(mA), n, MatElems(mB), n, beta, MatElems(mC), n);
     } else {
@@ -72,7 +72,7 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
   const int n = MatN(mA);
 
   if (MatDev(mA)) {
-    if (MatDouble(mA)) {
+    if (8 == MatElemSize(mA)) {
       cublasDgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha,
                   MatElems(mA), n, &beta, MatElems(mB), n, MatElems(mC), n);
     } else {
@@ -83,7 +83,7 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
   } else { // software
     for (int col = 0; col < n; col++) {
       if (mB == mC) {
-        if (MatDouble(mA)) {
+        if (8 == MatElemSize(mA)) {
           cblas_dscal(n, beta, MatCol(mB, col), 1);
           cblas_daxpy(n, alpha, MatCol(mA, col), 1, MatCol(mB, col), 1);
         } else {
@@ -92,7 +92,7 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
         }
       } else {
         memset(MatCol(mC, col), 0, MatPitch(mC));
-        if (MatDouble(mA)) {
+        if (8 == MatElemSize(mA)) {
           cblas_daxpy(n, alpha, MatCol(mA, col), 1, MatCol(mC, col), 1);
           cblas_daxpy(n, beta, MatCol(mB, col), 1, MatCol(mC, col), 1);
         } else {
@@ -122,7 +122,7 @@ double norm(Mat mA) {
   if (MatDev(mA)) {
     froNorm = cuNorm(MatElems(mA), MatN2(mA), MatElemSize(mA));
   } else { // software
-    froNorm = MatDouble(mA) ?
+    froNorm = 8 == MatElemSize(mA) ?
       LAPACKE_dlange(LAPACK_COL_MAJOR, 'F', n, n, MatElems(mA), n) :
       LAPACKE_slange(LAPACK_COL_MAJOR, 'F', n, n, MatElems(mA), n);
   }

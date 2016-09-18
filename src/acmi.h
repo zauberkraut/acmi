@@ -27,13 +27,12 @@ void fatal(const char* msg, ...);
 double mibibytes(size_t size);
 
 // mat.c
-Mat MatNew(int n, bool doublePrec, bool dev);
+Mat MatNew(int n, int elemSize, bool dev);
 Mat MatBuild(Mat m);
 void MatFree(Mat m);
 void MatClear(Mat m);
 int MatN(Mat m);
 int64_t MatN2(Mat m);
-bool MatDouble(Mat m);
 int MatElemSize(Mat m);
 size_t MatSize(Mat m);
 size_t MatPitch(Mat m);
@@ -45,12 +44,12 @@ bool MatSparse(Mat m);
 double MatTrace(Mat m);
 void MatToDev(Mat m);
 void MatToHost(Mat m);
-void MatWiden(Mat m);
+void MatPromote(Mat m);
 double MatGet(Mat m, int row, int col);
 void MatPut(Mat m, int row, int col, double elem);
-Mat MatLoad(const char* path, bool doublePrec, bool attrOnly);
+Mat MatLoad(const char* path, int elemSize, bool attrOnly);
 void MatWrite(Mat m, const char* path);
-Mat MatRandDiagDom(int n, bool doublePrec, bool symm);
+Mat MatRandDiagDom(int n, int elemSize, bool symm);
 void MatDebug(Mat m);
 
 // invert.c
@@ -77,7 +76,7 @@ void cuUpload(void* devDst, const void* hostSrc, size_t size);
 void cuDownload(void* hostDst, const void* devSrc, size_t size);
 void cuPin(void* p, size_t size);
 void cuUnpin(void* p);
-void cuWiden(double* dst, float* src, int64_t n2);
+void cuPromote(double* dst, float* src, int64_t n2);
 void cuSetDiag(void* elems, double alpha, int n, int elemSize);
 double cuNorm(void* elems, int64_t n2, int elemSize);
 double cuNormSubFromI(void* elems, int n, int elemSize);

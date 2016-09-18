@@ -6,49 +6,47 @@
 
 extern "C" size_t cuMemAvail() {
   size_t free, total;
-  assert(cudaMemGetInfo(&free, &total) == cudaSuccess);
+  assert(cudaSuccess == cudaMemGetInfo(&free, &total));
   return free;
 }
 
 extern "C" void* cuMalloc(size_t size) {
   void* p;
-  assert(cudaMalloc(&p, size) == cudaSuccess);
+  assert(cudaSuccess == cudaMalloc(&p, size));
   return p;
 }
 
-extern "C" void cuFree(void* p) { assert(cudaFree(p) == cudaSuccess); }
+extern "C" void cuFree(void* p) { assert(cudaSuccess == cudaFree(p)); }
 
 extern "C" void cuClear(void* p, size_t size) {
-  assert(cudaMemset(p, 0, size) == cudaSuccess);
+  assert(cudaSuccess == cudaMemset(p, 0, size));
 }
 
 extern "C" void cuUpload(void* devDst, const void* hostSrc, size_t size) {
-  assert(cudaMemcpy(devDst, hostSrc, size, cudaMemcpyHostToDevice) ==
-         cudaSuccess);
+  assert(cudaSuccess == cudaMemcpy(devDst, hostSrc, size, cudaMemcpyHostToDevice));
 }
 
 extern "C" void cuPin(void* p, size_t size) {
-  assert(cudaHostRegister(p, size, cudaHostRegisterPortable) == cudaSuccess);
+  assert(cudaSuccess == cudaHostRegister(p, size, cudaHostRegisterPortable));
 }
 
 extern "C" void cuUnpin(void* p) {
-  assert(cudaHostUnregister(p) == cudaSuccess);
+  assert(cudaSuccess == cudaHostUnregister(p));
 }
 
 extern "C" void cuDownload(void* hostDst, const void* devSrc, size_t size) {
-  assert(cudaMemcpy(hostDst, devSrc, size, cudaMemcpyDeviceToHost) ==
-         cudaSuccess);
+  assert(cudaSuccess == cudaMemcpy(hostDst, devSrc, size, cudaMemcpyDeviceToHost));
 }
 
-static __global__ void kernWiden(double* dst, const float* src, const int64_t n2) {
+static __global__ void kernPromote(double* dst, const float* src, const int64_t n2) {
   for (int64_t i = 0; i < n2; i++) {
     dst[i] = src[i];
   }
 }
 
-extern "C" void cuWiden(double* dst, float* src, int64_t n2) {
-  kernWiden<<<1, 1>>>(dst, src, n2);
-  assert(cudaGetLastError() == cudaSuccess);
+extern "C" void cuPromote(double* dst, float* src, int64_t n2) {
+  kernPromote<<<1, 1>>>(dst, src, n2);
+  assert(cudaSuccess == cudaGetLastError());
 }
 
 static __global__ void kernSetDiag32(float* elems, double alpha, int n) {
@@ -64,9 +62,9 @@ static __global__ void kernSetDiag64(double* elems, double alpha, int n) {
 }
 
 extern "C" void cuSetDiag(void* elems, double alpha, int n, int elemSize) {
-  elemSize == 8 ? kernSetDiag64<<<1, 1>>>((double*)elems, alpha, n)
+  8 == elemSize ? kernSetDiag64<<<1, 1>>>((double*)elems, alpha, n)
                 : kernSetDiag32<<<1, 1>>>((float*)elems, alpha, n);
-  assert(cudaGetLastError() == cudaSuccess);
+  assert(cudaSuccess == cudaGetLastError());
 }
 
 __device__ double d_froNorm;
@@ -90,9 +88,9 @@ static __global__ void kern64Norm(const double* a, const int64_t n2) {
 }
 
 extern "C" double cuNorm(void* elems, int64_t n2, int elemSize) {
-  elemSize == 8 ? kern64Norm<<<1, 1>>>((double*)elems, n2)
+  8 == elemSize ? kern64Norm<<<1, 1>>>((double*)elems, n2)
                 : kern32Norm<<<1, 1>>>( (float*)elems, n2);
-  assert(cudaGetLastError() == cudaSuccess);
+  assert(cudaSuccess == cudaGetLastError());
   typeof(d_froNorm) froNorm;
   cudaMemcpyFromSymbol(&froNorm, d_froNorm, sizeof(froNorm), 0, cudaMemcpyDeviceToHost);
   return froNorm;
@@ -123,9 +121,9 @@ static __global__ void kern64NormSubFromI(double* a, int n) {
 }
 
 extern "C" double cuNormSubFromI(void* elems, int n, int elemSize) {
-  elemSize == 8 ? kern64NormSubFromI<<<1, 1>>>((double*)elems, n)
+  8 == elemSize ? kern64NormSubFromI<<<1, 1>>>((double*)elems, n)
                 : kern32NormSubFromI<<<1, 1>>>( (float*)elems, n);
-  assert(cudaGetLastError() == cudaSuccess);
+  assert(cudaSuccess == cudaGetLastError());
   typeof(d_froNorm) froNorm;
   cudaMemcpyFromSymbol(&froNorm, d_froNorm, sizeof(froNorm), 0, cudaMemcpyDeviceToHost);
   return froNorm;
@@ -148,7 +146,7 @@ static __global__ void kern64Add3I(double* a, int n) {
 }
 
 extern "C" void cuAdd3I(void* elems, int n, int elemSize) {
-  elemSize == 8 ? kern64Add3I<<<1, 1>>>((double*)elems, n)
+  8 == elemSize ? kern64Add3I<<<1, 1>>>((double*)elems, n)
                 : kern32Add3I<<<1, 1>>>( (float*)elems, n);
-  assert(cudaGetLastError() == cudaSuccess);
+  assert(cudaSuccess == cudaGetLastError());
 }

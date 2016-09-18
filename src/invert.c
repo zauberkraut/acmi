@@ -64,10 +64,10 @@ double altmanInvert(Mat mA, Mat* mRp, double errLimit, int msLimit,
       prevErr = INFINITY;
       iter = -1;
       continue;
-    } else if (!MatDouble(mA) && convRate > 1) {
+    } else if (MatElemSize(mA) < 8 && convRate > 1) {
       debug("diverging, extending to double precision...");
       // TODO: MatExtend
-      MatWiden(mA); MatWiden(mR); MatWiden(mAR); MatWiden(mX);
+      MatPromote(mA); MatPromote(mR); MatPromote(mAR); MatPromote(mX);
       prevErr = INFINITY;   // our 32-bit error might have been truncated
       iter--;
       continue;
