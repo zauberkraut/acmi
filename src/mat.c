@@ -24,7 +24,32 @@ struct Mat_ {
 };
 
 // for generic marshalling of different FP precisions
-typedef union {uint16_t fp16; float fp32; double fp64;} Elem;
+union Elem {
+  uint16_t fp16;
+  float fp32;
+  double fp64;
+  struct Double2 fp64x2;
+};
+
+double ElemVal(union Elem* e, int size) {
+  double val = INFINITY;
+  switch (size) {
+    case 2:  val = e->fp16;      break; // TODO
+    case 4:  val = e->fp32;      break;
+    case 8:  val = e->fp64;      break;
+    case 16: val = e->fp64x2.hi; break; // TODO;
+  }
+  return val;
+}
+
+void ElemSet(union Elem* e, int size, double val) {
+  switch (size) {
+    case 2:  e->fp16 = 0; /* TODO */               break;
+    case 4:  e->fp32 = val;                        break;
+    case 8:  e->fp64 = val;                        break;
+    case 16: e->fp64x2.hi = val; e->fp64x2.lo = 0; break;
+  }
+}
 
 /* Initializes a matrix without allocating element space. */
 static Mat MatEmptyNew(int n, int elemSize) {
@@ -137,7 +162,7 @@ void MatToHost(Mat m) {
 
 /* Converts a 32-bit matrix to 64-bit. */
 void MatPromote(Mat m) {
-  assert(MatElemSize(m) != 16);
+  assert(MatElemSize(m) < 16);
 
   struct Mat_ m32 = *m;
   m->elemSize = 8; // TODO: double double
@@ -161,18 +186,17 @@ void MatPromote(Mat m) {
 /* Returns a matrix element. */
 double MatGet(Mat m, int row, int col) {
   assert(row >= 0 && row < m->n && col >= 0 && col < m->n);
-  Elem e;
+  union Elem e;
   m->dev ? cuDownload(&e, elemAddr(m, row, col), m->elemSize)
          : memcpy(&e, elemAddr(m, row, col), m->elemSize);
-  return 8 == MatElemSize(m) ? e.fp64 : e.fp32;
+  return ElemVal(&e, m->elemSize);
 }
 
 /* Sets a matrix element. */
 void MatPut(Mat m, int row, int col, double elem) {
   assert(row >= 0 && row < m->n && col >= 0 && col < m->n);
-  Elem e;
-  if (8 == MatElemSize(m)) e.fp64 = elem;
-  else                     e.fp32 = elem;
+  union Elem e;
+  ElemSet(&e, m->elemSize, elem);
   m->dev ? cuUpload(elemAddr(m, row, col), &e, m->elemSize)
          : memcpy(elemAddr(m, row, col), &e, m->elemSize);
 }

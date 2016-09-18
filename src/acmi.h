@@ -15,9 +15,12 @@
 #include <time.h>
 
 static const int MAX_MAT_DIM = 32768;
+static const int MAX_ELEM_SIZE = 8;
 
 struct Mat_;
 typedef struct Mat_* Mat;
+struct Double2 { double hi, lo; };
+union Elem;
 
 // util.c
 void setVerbose(bool b);
@@ -51,6 +54,8 @@ Mat MatLoad(const char* path, int elemSize, bool attrOnly);
 void MatWrite(Mat m, const char* path);
 Mat MatRandDiagDom(int n, int elemSize, bool symm);
 void MatDebug(Mat m);
+double ElemVal(union Elem* e, int size);
+void ElemSet(union Elem* e, int size, double val);
 
 // invert.c
 double altmanInvert(Mat mA, Mat *mRp, double errLimit, int msLimit,

@@ -14,7 +14,7 @@
 
 const int MAX_PATH_LEN = 255;
 const int MIN_ELEM_BITS = 32;
-const int MAX_ELEM_BITS = 128;
+const int MAX_ELEM_BITS = 64;
 const int DEFAULT_ELEM_SIZE = 4;
 const double DEFAULT_ERR_LIMIT = 0.00001;
 const int DEFAULT_MS_LIMIT = 60000; // one minute
@@ -84,7 +84,7 @@ void usage() {
          "  -q          Disable logging\n"
          "  -i          Print matrix file info and exit\n"
          "  -o <path>   Output computed matrix inverse to path\n"
-         "  -p <#bits>  Set floating-point matrix element precision (32, 64 or 128; default: %d)\n"
+         "  -p <#bits>  Set floating-point matrix element precision (32 or 64, default: %d)\n"
          "  -2          Employ quadratic instead of cubic convergence\n"
          "  -e <real>   Set inversion error limit (default: %g)\n"
          "  -t <ms>     Set inversion time limit in ms (default: %d ms)\n"

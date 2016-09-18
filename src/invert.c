@@ -64,7 +64,8 @@ double altmanInvert(Mat mA, Mat* mRp, double errLimit, int msLimit,
       prevErr = INFINITY;
       iter = -1;
       continue;
-    } else if (MatElemSize(mA) < 8 && convRate > 1) {
+    } else if (MatElemSize(mA) < MAX_ELEM_SIZE &&
+               (convRate > 1 || err > prevErr)) {
       debug("diverging, extending to double precision...");
       // TODO: MatExtend
       MatPromote(mA); MatPromote(mR); MatPromote(mAR); MatPromote(mX);
