@@ -50,7 +50,8 @@ double MatGet(Mat m, int row, int col);
 void MatPut(Mat m, int row, int col, double elem);
 Mat MatLoad(const char* path, int elemSize, bool attrOnly);
 void MatWrite(Mat m, const char* path);
-Mat MatRandDiagDom(int n, int elemSize, bool symm);
+Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
+               bool neg, bool diagDom);
 void MatDebug(Mat m);
 double ElemVal(union Elem* e, int size);
 void ElemSet(union Elem* e, int size, double val);

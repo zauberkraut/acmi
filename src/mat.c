@@ -6,8 +6,7 @@
 #include "acmi.h"
 #include "mmio.h"
 
-/* A matrix is sparse when its proportion of nonzero entries is exceeded by
-   this. */
+/* A matrix is sparse when its proportion of nonzero entries exceeds this. */
 static const double SPARSITY_THRESHOLD = 0.05;
 
 struct Mat_ {
@@ -21,7 +20,7 @@ struct Mat_ {
   double trace; // the sum of the diagonal entries
 };
 
-// for generic marshalling of different FP precisions
+/* For generic handling of floating-point precisions. */
 union Elem {
   uint16_t fp16;
   float fp32;
@@ -114,19 +113,7 @@ size_t MatPitch(Mat m) { return m->pitch; }
 void* MatElems(Mat m) { return m->elems; }
 void* MatCol(Mat m, int col) { return elemAddr(m, 0, col); }
 bool MatDev(Mat m) { return m->dev; }
-
-/* Returns a matrix' trace, lazily computing it. */
-double MatTrace(Mat m) {
-  if (isnan(m->trace)) {
-    debug("computing matrix trace");
-    m->trace = 0;
-    for (int i = 0; i < m->n; i++) {
-      m->trace += MatGet(m, i, i);
-    }
-  }
-
-  return m->trace;
-}
+double MatTrace(Mat m) { return m->trace; }
 
 /* Uploads a matrix' elements to device memory, freeing its host memory. */
 void MatToDev(Mat m) {
@@ -213,7 +200,9 @@ void MatPut(Mat m, int row, int col, double elem) {
 /* Loads a matrix of the given precision from a file. */
 Mat MatLoad(const char* path, int elemSize, bool attrOnly) {
   FILE* in = fopen(path, "r");
-  if (!in) fatal("couldn't open %s", path);
+  if (!in) {
+    fatal("couldn't open %s", path);
+  }
 
   MM_typecode matCode;
   if (mm_read_banner(in, &matCode)) {
@@ -249,13 +238,17 @@ Mat MatLoad(const char* path, int elemSize, bool attrOnly) {
 
   double sparsity = INFINITY;
   if (coord) {
-    if (symmOrSkew) debug("...and is %ssymmetric", skew ? "skew-" : "");
+    if (symmOrSkew) {
+      debug("...and is %ssymmetric", skew ? "skew-" : "");
+    }
 
     int64_t nNonzero = symmOrSkew ? 2*nEntries - n : nEntries;
     sparsity = (double)nNonzero/n2;
     debug("...and has %ld nonzero elements and sparsity %g", nNonzero,
           sparsity);
-    if (sparsity < SPARSITY_THRESHOLD) debug("...and qualifies as sparse");
+    if (sparsity < SPARSITY_THRESHOLD) {
+      debug("...and qualifies as sparse");
+    }
   }
 
   if (attrOnly) { // user just wanted the file specs reported above; return
@@ -264,6 +257,7 @@ Mat MatLoad(const char* path, int elemSize, bool attrOnly) {
   }
 
   Mat m = MatNew(n, elemSize, false);
+  m->trace = 0; // we'll compute the trace, so clear the NaN
   const int symmSign = skew ? -1 : 1;
 
   if (coord) {
@@ -281,6 +275,8 @@ Mat MatLoad(const char* path, int elemSize, bool attrOnly) {
 
       if (symmOrSkew && row != col) { // mirror symmetric element
         MatPut(m, col - 1, row - 1, symmSign*elem);
+      } else if (row == col) {
+        m->trace += elem;
       }
     }
   } else { // dense array encoding
@@ -294,14 +290,14 @@ Mat MatLoad(const char* path, int elemSize, bool attrOnly) {
 
         if (symmOrSkew && row != col) {
           MatPut(m, col, row, symmSign*elem);
+        } else if (row == col) {
+          m->trace += elem;
         }
       }
     }
   }
 
   fclose(in);
-
-  MatTrace(m); // compute trace
 
   return m;
 }
@@ -323,7 +319,7 @@ void MatWrite(Mat m, const char* path) {
   mm_set_array(&matCode);
   const int n = m->n;
 
-  debug("writing %g MiB %dx%d matrix in array format", mibibytes(MatSize(m)),
+  debug("writing %.3f MiB %dx%d matrix in array format", mibibytes(MatSize(m)),
         n, n);
 
   mm_write_banner(out, matCode);
@@ -337,43 +333,60 @@ void MatWrite(Mat m, const char* path) {
   fclose(out);
 }
 
-/* Generates a random, invertible, diagonally-dominant matrix, the diagonal
-   entries of which shall be positive to avoid ill-conditioning. */
-Mat MatRandDiagDom(int n, int elemSize, bool symm) {
+/* Generates a random, probably-invertible matrix of integers.
+   Allowing negative entries shall probably cause ill-conditioning. */
+Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
+               bool neg, bool diagDom) {
   Mat m = MatNew(n, elemSize, false);
   m->trace = 0;
+  int maxElemEx = floor(maxElem) + 1;
 
   for (int row = 0; row < n; row++) {
     int col = symm ? row : 0;
     double rowSum = 0;
     // if symmetric, sum the elements before this diagonal
-    for (int i = 0; i < col; i++) rowSum += MatGet(m, row, i);
+    for (int i = 0; i < col; i++) {
+      rowSum += MatGet(m, row, i);
+    }
 
     for (; col < n; col++) {
-      if (row != col) { // diagonals are set below from the computed sum
-        double absElem = (double)(rand() % n);
-        double signE = rand() % 2 ? 1 : -1; // random element sign
-        double elem = signE*absElem;
+      if (!diagDom || row != col) { // diagonals are set below from the computed sum
+        double absElem = real ? (double)rand() / RAND_MAX * maxElem :
+                                (double)(rand() % maxElemEx);
+        double sign = neg ? (rand() % 2 ? 1 : -1) : 1;
+        double elem = sign * absElem;
         MatPut(m, row, col, elem);
-        if (symm) { // mirror symmetric element
+        if (symm && row != col) { // mirror symmetric element
           MatPut(m, col, row, elem);
         }
         rowSum += absElem;
+
+        if (row == col) {
+          m->trace += elem;
+        }
       }
     }
 
-    // make diagonal strictly greater than the sum of the other row entries
-    double diag = rowSum + 1;
-    MatPut(m, row, row, diag);
-    m->trace += diag; // opportunistic trace computation
+    if (diagDom) {
+      double sign = neg ? (rand() % 2 ? 1 : -1) : 1;
+      // make diagonal strictly greater than the sum of the other row entries
+      double diag = sign * (real ? nextafter(rowSum, INFINITY) : rowSum + 1);
+      MatPut(m, row, row, diag);
+      m->trace += diag;
+    }
   }
 
   return m;
 }
 
 void MatDebug(Mat m) {
-  debug("matrix is:\n"
-        "%dx%dx%d = %g MiB, %ld elements, %ld bytes per col\n"
+  debug("matrix is: %dx%dx%d = %.3f MiB, %ld elements, %ld bytes per col\n"
         "dev: %d, trace %g", m->n, m->n, m->elemSize, mibibytes(m->size), m->n2,
         m->pitch, m->dev, m->trace);
+  for (int row = 0; row < m->n; row++) {
+    for (int col = 0; col < m->n; col++) {
+      printf("%.3f ", MatGet(m, row, col));
+    }
+    printf("\n");
+  }
 }

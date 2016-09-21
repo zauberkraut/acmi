@@ -3,42 +3,29 @@
    ACMI utility functions. */
 
 #include <stdarg.h>
-#include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-static bool g_verbose = true;
-void setVerbose(bool b) {
-  g_verbose = b;
+static void print(FILE* f, const char* s, va_list args) {
+  vfprintf(f, s, args);
+  fprintf(f, "\n");
+  va_end(args);
 }
 
-void debug(const char* msg, ...) {
-  if (g_verbose) {
-    va_list args;
-    va_start(args, msg);
-    vprintf(msg, args);
-    printf("\n");
-    va_end(args);
-  }
+void debug(const char* s, ...) {
+  va_list args; va_start(args, s); print(stdout, s, args);
 }
 
-void warn(const char* msg, ...) {
-  va_list args;
-  va_start(args, msg);
+void warn(const char* s, ...) {
   fprintf(stderr, "WARNING: ");
-  vfprintf(stderr, msg, args);
-  fprintf(stderr, "\n");
-  va_end(args);
+  va_list args; va_start(args, s);
+  print(stderr, s, args);
 }
 
-void fatal(const char* msg, ...) {
-  va_list args;
-  va_start(args, msg);
+void fatal(const char* s, ...) {
   fprintf(stderr, "FATAL: ");
-  vfprintf(stderr, msg, args);
-  fprintf(stderr, "\n");
-  va_end(args);
+  va_list args; va_start(args, s);
+  print(stderr, s, args);
   exit(1);
 }
 

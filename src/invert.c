@@ -5,7 +5,6 @@
 #include "acmi.h"
 
 static const double POSDEF_STEP_THRESH = 5;
-static const double MAX_CONV_RATE_FACTOR = 10;
 
 static double traceErr(double alpha, Mat mA) {
   return sqrt(MatN(mA) + 1 - 2*alpha*MatTrace(mA));
@@ -58,7 +57,7 @@ double altmanInvert(Mat mA, Mat* mRp, int convOrder, double errLimit,
     }
 
     if (posDef && err > prevErr && iter < POSDEF_STEP_THRESH) {
-      debug("diverged, retrying with non-positive-definite R0...");
+      debug("diverged, retrying with alternate R0...");
       swap(&mX, &mR); // back up R to its previous value
       posDef = false;
       transpose(alpha, mA, mR);
@@ -103,10 +102,9 @@ double altmanInvert(Mat mA, Mat* mRp, int convOrder, double errLimit,
     }
   }
 
-  debug("inversion halted after %g seconds", msSince()/1000.);
+  debug("inversion halted after %d ms", msSince());
   if (err > errLimit) {
-    warn("failed to converge to error < %g within %g seconds",
-         errLimit, msLimit/1000.);
+    warn("failed to converge to error < %g within %d ms", errLimit, msLimit);
   }
 
   MatFree(mAR); MatFree(mX);

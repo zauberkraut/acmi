@@ -95,16 +95,13 @@ void usage() {
   printf("ACMI Convergent Matrix Inverter\nJ. Treadwell, 2016\n\n"
          "Usage:\n  acmi [options] <input file>\n\n"
          "  Currently, only Matrix Market files are supported as input and output.\n"
-         "  To generate and invert a randomly matrix, enter the matrix dimension\n"
-         "  in lieu of the input file, prepending with '?', '$' or 'b' to generate an\n"
-         "  integer, diagonally-dominant or boolean matrix, respectively.\n\n"
+         "  To generate and invert a random matrix, enter the matrix dimension\n"
+         "  prepended by '@' in lieu of the input file; prepend with '%%' for symmetry.\n\n"
          "Options:\n"
-         "  -h          These instructions\n"
-         "  -q          Disable logging\n"
-         "  -i          Print matrix file info and exit\n"
+         "  -f          Print matrix file info and exit\n"
          "  -c          Perform all computations in software without the GPU\n"
          "  -o <path>   Output computed matrix inverse to path\n"
-         "  -r <order>  Set the order of convergence (1-4, default: %s)\n"
+         "  -q <order>  Set the order of convergence (1-4, default: %s)\n"
          "  -p <#bits>  Set initial matrix element floating-point precision\n"
          "              (32 or 64, default: %d)\n"
          "  -e <+real>  Set inversion error limit (default: %g)\n"
@@ -113,9 +110,12 @@ void usage() {
          "              with 'x' to use a multiple (>= 1) of the starting rate\n"
          "              (default: %s)\n"
          "Random matrix options:\n"
-         "  -s          Generate symmetric matrix\n"
-         "  -O <path>   Output generated, uninverted random matrix to path\n"
-         "  -x <hex>    Set PRNG seed (not yet portable)\n\n",
+         "  -R          Enable real elements\n"
+         "  -N          Enable negative elements\n"
+         "  -D          Generate dominant diagonal elements\n"
+         "  -V <+real>  Set max element magnitude (default: matrix dimension)\n"
+         "  -U <path>   Output generated, uninverted matrix to path\n"
+         "  -S <hex>    Set PRNG seed (not yet portable)\n\n",
          DEFAULT_CONV_ORDER_STR, 8*DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT,
          DEFAULT_CONV_RATE_LIMIT_STR);
   exit(0);
@@ -131,7 +131,8 @@ int main(int argc, char* argv[]) {
   int msLimit = DEFAULT_MS_LIMIT;
   double convRateLimit = DEFAULT_CONV_RATE_LIMIT;
   int randDim = 0;
-  bool randSymm = false;
+  bool randSymm = false, randReal = false, randNeg = false, randDiagDom = false;
+  double randMaxElem = NAN;
   char* randOutPath = 0;
   unsigned prngSeed = 0;
 
@@ -141,20 +142,25 @@ int main(int argc, char* argv[]) {
 
   opterr = 0;
   int opt;
-  while ((opt = getopt(argc, argv, "hqico:r:p:e:t:m:sO:x:")) != -1) {
+  while ((opt = getopt(argc, argv, "fco:q:p:e:t:m:RNDV:U:S:")) != -1) {
     switch (opt) {
       int i;
       double d;
 
-    case 'h': usage();           break;
-    case 'q': setVerbose(false); break;
-    case 'i': infoMode = true;   break;
+    case 'f': infoMode = true;   break;
     case 'c': softMode = true;   break;
-    case 's': randSymm = true;   break;
+
+    case 'R': randReal = true;    break;
+    case 'N': randNeg = true;     break;
+    case 'D': randDiagDom = true; break;
 
     case 'o':
       checkWriteAccess(optarg);
       outPath = strndup(optarg, MAX_PATH_LEN);
+      break;
+    case 'q':
+      convOrder = (int)parseInt(10, MIN_CONV_ORDER, MAX_CONV_ORDER,
+                                "conversion order must be 1-4");
       break;
     case 'p':
       i = (int)parseInt(10, MIN_ELEM_BITS, MAX_ELEM_BITS,
@@ -164,10 +170,6 @@ int main(int argc, char* argv[]) {
         fatal("invalid floating-point precision");
       }
       elemSize = i/8;
-      break;
-    case 'r':
-      convOrder = (int)parseInt(10, MIN_CONV_ORDER, MAX_CONV_ORDER,
-                                "conversion order must be 1-4");
       break;
     case 'e':
       errLimit = parseFloat(0, 1,
@@ -187,11 +189,16 @@ int main(int argc, char* argv[]) {
       convRateLimit = i*parseFloat(d, MAX_CONV_RATE,
                                    "invalid convergence rate limit");
       break;
-    case 'O':
+
+    case 'V':
+      randMaxElem = parseFloat(0, INT_MAX,
+                               "invalid max random element");
+      break;
+    case 'U':
       checkWriteAccess(optarg);
       randOutPath = strndup(optarg, MAX_PATH_LEN);
       break;
-    case 'x':
+    case 'S':
       prngSeed = (unsigned)parseInt(16, 1, UINT_MAX,
                                     "invalid 32-bit hexadecimal seed");
       break;
@@ -221,53 +228,66 @@ int main(int argc, char* argv[]) {
   if (optind < argc - 1) {
     fatal("unexpected argument: %s", argv[optind+1]);
   }
-  if ('?' == optarg[0]) { // random mode
-    optarg++; // parse remainder of argument as the matrix dimension
-    randDim = (int)parseInt(10, 2, MAX_MAT_DIM,
-                            "invalid random matrix dimension");
-  } else {
-    if (randSymm || randOutPath || prngSeed) {
-      fatal("options -r, -s, -O and -x apply only to random matrices");
-    }
-  }
 
   if (elemSize == 2 && softMode) {
     fatal("half-precision floating-point only supported on the GPU");
   }
 
-  Mat mA = 0;
-
   if (!softMode) {
-    debug("%g MiB device memory available", mibibytes(cuMemAvail()));
+    debug("%.3f MiB device memory available", mibibytes(cuMemAvail()));
   }
+
+  switch (optarg[0]) {
+    case '%':
+      randSymm = true;
+    case '@':
+      optarg++; // parse remainder of argument as the matrix dimension
+      randDim = (int)parseInt(10, 2, MAX_MAT_DIM,
+                              "invalid random matrix dimension");
+      if (isnan(randMaxElem)) {
+        randMaxElem = randDim;
+      }
+  }
+
+  Mat mA = 0;
   const int loadElemSize = elemSize == 2 ? 4 : elemSize;
 
   if (randDim) { // random mode
-    if (!prngSeed) prngSeed = time(0); // if user supplied no seed, use time
+    if (!prngSeed) { // if user supplied no seed, use time
+      prngSeed = time(0);
+    }
     debug("seeding PRNG with %x", prngSeed);
     srand(prngSeed);
 
-    debug("generating %d-bit random %dx%d%s matrix...", 8*loadElemSize,
-          randDim, randDim, randSymm ? " symmetric" : "");
-    mA = MatRandDiagDom(randDim, loadElemSize, randSymm);
+    debug("generating %d-bit random %dx%d%s%s%s%s matrix...", 8*loadElemSize,
+          randDim, randDim, randSymm ? " symmetric" : "",
+          randReal ? "" : " integer", randNeg ? "" : " nonnegative",
+          randDiagDom ? "\n  diagonally-dominant" : "");
+
+    mA = MatNewRand(randDim, loadElemSize, randMaxElem, randSymm, randReal,
+                    randNeg, randDiagDom);
 
     if (randOutPath) { // optionally write randomly-generated matrix
       MatWrite(mA, randOutPath);
       free(randOutPath);
     }
   } else { // load matrix from given file
+    if (randSymm || randReal || randNeg || randDiagDom || !isnan(randMaxElem) ||
+        randOutPath || prngSeed) {
+      fatal("options -RNDVUS apply only to random matrices");
+    }
     debug("loading %s", optarg);
     mA = MatLoad(optarg, loadElemSize, infoMode);
   }
 
   if (elemSize == 2) {
-    debug("demoting loaded matrix to 16-bit, original size: %g MiB",
+    debug("demoting loaded matrix to 16-bit, original size: %.3f MiB",
           mibibytes(MatSize(mA)));
     MatDemote(mA);
   }
 
   const double matMiB = mibibytes(MatSize(mA));
-  debug("%g MiB/matrix; allocating %g MiB total", matMiB, 4*matMiB);
+  debug("%.3f MiB/matrix; allocating %.3f MiB total", matMiB, 4*matMiB);
 
   if (infoMode) {
     debug("matrix info-only mode: terminating");
@@ -277,7 +297,7 @@ int main(int argc, char* argv[]) {
   if (!softMode) { // upload source matrix to GPU
     MatToDev(mA);
   } else {
-    printf("GPU acceleration disabled!");
+    debug("GPU acceleration disabled!");
   }
 
   const char* orderStr = "<error>";
