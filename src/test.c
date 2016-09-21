@@ -78,10 +78,10 @@ static void testMat64(void** state) {
 }
 
 /* Tests the symmetry of a randomly-generated, symmetric matrix. */
-static void testMatRandSymmetry(void** state) {
+static void testMatNewRandSymm(void** state) {
   const int n = 1024;
 
-  Mat m = MatRandDiagDom(n, 4, true);
+  Mat m = MatNewRand(n, 4, 16, true, false, true, false);
 
   for (int row = 0; row < n; row++) {
     for (int col = row + 1; col < n; col++) {
@@ -94,9 +94,8 @@ int main() {
   const struct CMUnitTest tests[] = {
     cmocka_unit_test(testMatBasic),
     cmocka_unit_test(testMat64),
-    cmocka_unit_test(testMatRandSymmetry),
+    cmocka_unit_test(testMatNewRandSymm),
   };
 
-  setVerbose(false);
   return cmocka_run_group_tests(tests, 0, 0);
 }
