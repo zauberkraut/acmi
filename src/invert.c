@@ -4,8 +4,8 @@
 
 #include "acmi.h"
 
-const double POSDEF_STEP_THRESH = 5;
-const double MAX_CONV_RATE_FACTOR = 10;
+static const double POSDEF_STEP_THRESH = 5;
+static const double MAX_CONV_RATE_FACTOR = 10;
 
 static double traceErr(double alpha, Mat mA) {
   return sqrt(MatN(mA) + 1 - 2*alpha*MatTrace(mA));
@@ -25,8 +25,8 @@ static void swap(Mat* mp, Mat* np) {
   *np = t;
 }
 
-double altmanInvert(Mat mA, Mat* mRp, double errLimit, int msLimit,
-                    bool quadConv) {
+double altmanInvert(Mat mA, Mat* mRp, int convOrder, double errLimit,
+                    int msLimit, double convRateLimit) {
   clock_gettime(CLOCK_MONOTONIC, &g_startTime);
 
   debug("initializing work matrices...");
@@ -49,9 +49,10 @@ double altmanInvert(Mat mA, Mat* mRp, double errLimit, int msLimit,
     }
     static double prevErr = INFINITY;
     // rate of convergence
-    const double convRate = err/pow(prevErr, 3);
+    const double convRate = fabs(err)/pow(fabs(prevErr), 3);
 
-    debug("%sR%d: err=%11g, μ=%11g", iter < 10 ? " " : "", iter, err, convRate);
+    debug("%*sR%d: err = %.4e, μ = %.4e", iter < 10, "", iter, err, convRate);
+
     if (err <= errLimit) {
       break;
     }
@@ -64,12 +65,11 @@ double altmanInvert(Mat mA, Mat* mRp, double errLimit, int msLimit,
       prevErr = INFINITY;
       iter = -1;
       continue;
-    } else if (MatElemSize(mA) < MAX_ELEM_SIZE &&
-               (convRate > 1 || err > prevErr)) {
+    } else if (MatElemSize(mA) < MAX_ELEM_SIZE && convRateLimit > 0 &&
+               (convRate > convRateLimit || err > prevErr)) {
       debug("diverging, extending to double precision...");
-      // TODO: MatExtend
       MatPromote(mA); MatPromote(mR); MatPromote(mAR); MatPromote(mX);
-      prevErr = INFINITY;   // our 32-bit error might have been truncated
+      prevErr = INFINITY; // our 32-bit error might have been truncated
       iter--;
       continue;
     } else if (err > prevErr) {
@@ -79,23 +79,27 @@ double altmanInvert(Mat mA, Mat* mRp, double errLimit, int msLimit,
       break;
     }
 
+    if (iter == 1 && convRateLimit < 0) {
+      convRateLimit *= -convRate;
+    }
     prevErr = err;
 
-    if (quadConv) {
-      gemm(1, mR, mAR, 0, mX);
-      geam(-1, mX, 2, mR, mR);
-    } else {
-      gemm(1, mAR, mAR, 0, mX);
-      // add 3I
-      add3I(mX);
-      // minus 3 mat
-      geam(-3, mAR, 1, mX, mX);
-      // new R (overwriting AR, since we'll recompute that anyway)
-      gemm(1, mR, mX, 0, mAR);
-      // put the new R where it belongs; AR now has the old R
-      swap(&mR, &mAR);
-      // put old R in X, junk in AR
-      swap(&mX, &mAR);
+    switch (convOrder) {
+      case 2:
+        gemm(1, mR, mAR, 0, mX);  // mX  <- RAR
+        geam(-1, mX, 2, mR, mAR); // mAR <- 2R - RAR = next R
+        swap(&mR, &mAR);          // mR  <- next R,     mAR <- previous R
+        swap(&mX, &mAR);          // mX  <- previous R, mAR <- junk
+        break;
+      case 3:
+        gemm(1, mAR, mAR, 0, mX); // mX  <- (AR)^2
+        add3I(mX);                // mX  <- 3I + (AR)^2
+        geam(-3, mAR, 1, mX, mX); // mX  <- 3I - 3AR + (AR)^2
+        gemm(1, mR, mX, 0, mAR);  // mAR <- R(3I - 3AR + (AR)^2) = next R
+        swap(&mR, &mAR);          // mR  <- next R,     mAR <- previous R
+        swap(&mX, &mAR);          // mX  <- previous R, mAR <- junk
+        break;
+      default: fatal("unsupported convergence order: %d", convOrder);
     }
   }
 

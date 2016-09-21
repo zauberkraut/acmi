@@ -1,6 +1,6 @@
-/* blas.c
+/* linalg.c
  
-   ACMI linear algebra operations implemented using (cu)BLAS. */
+   ACMI linear algebraic operations implemented using (cu)BLAS and CUDA. */
 
 #include <cublas_v2.h>
 #include <openblas/cblas.h>
@@ -9,14 +9,14 @@
 
 static cublasHandle_t g_cublasHandle = 0;
 
-void initCublas() {
+void cublasInit() {
   debug("initializing cuBLAS");
   if (cublasCreate(&g_cublasHandle) != CUBLAS_STATUS_SUCCESS) {
     fatal("couldn't open cuBLAS handle");
   }
 }
 
-void shutDownCublas() {
+void cublasShutDown() {
   debug("shutting down cuBLAS");
   if (g_cublasHandle) cublasDestroy(g_cublasHandle);
 }
@@ -26,15 +26,27 @@ void transpose(double alpha, Mat mA, Mat mT) {
   const int n = MatN(mA);
   assert(n == MatN(mT));
 
-  for (int row = 0; row < n; row++) {
-    for (int col = row; col < n; col++) {
-      if (row == col) {
-        MatPut(mT, row, col, alpha*MatGet(mA, row, col));
-      } else {
-        double upper = alpha*MatGet(mA, row, col);
-        double lower = alpha*MatGet(mA, col, row);
-        MatPut(mT, row, col, lower);
-        MatPut(mT, col, row, upper);
+  if (MatDev(mA)) {
+    if (8 == MatElemSize(mA)) {
+      double beta = 0;
+      cublasDgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &alpha,
+                  MatElems(mA), n, &beta, MatElems(mT), n, MatElems(mT), n);
+    } else {
+      float alpha32 = alpha; float beta32 = 0;
+      cublasSgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &alpha32,
+                  MatElems(mA), n, &beta32, MatElems(mT), n, MatElems(mT), n);
+    }
+  } else { // perform host memory transpose
+    for (int row = 0; row < n; row++) {
+      for (int col = row; col < n; col++) {
+        if (row == col) {
+          MatPut(mT, row, col, alpha*MatGet(mA, row, col));
+        } else {
+          double upper = alpha*MatGet(mA, row, col);
+          double lower = alpha*MatGet(mA, col, row);
+          MatPut(mT, row, col, lower);
+          MatPut(mT, col, row, upper);
+        }
       }
     }
   }
@@ -50,9 +62,9 @@ void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
       cublasDgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
                   MatElems(mA), n, MatElems(mB), n, &beta, MatElems(mC), n);
     } else { // entries are single-precision
-      float a = alpha; float b = beta;
-      cublasSgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &a,
-                  MatElems(mA), n, MatElems(mB), n, &b, MatElems(mC), n);
+      float alpha32 = alpha; float beta32 = beta;
+      cublasSgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha32,
+                  MatElems(mA), n, MatElems(mB), n, &beta32, MatElems(mC), n);
     }
   } else { // matrix elements reside in host memory
     if (8 == MatElemSize(mA)) {
@@ -76,9 +88,9 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
       cublasDgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha,
                   MatElems(mA), n, &beta, MatElems(mB), n, MatElems(mC), n);
     } else {
-      float a = alpha; float b = beta;
-      cublasSgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &a,
-                  MatElems(mA), n, &b, MatElems(mB), n, MatElems(mC), n);
+      float alpha32 = alpha; float beta32 = beta;
+      cublasSgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha32,
+                  MatElems(mA), n, &beta32, MatElems(mB), n, MatElems(mC), n);
     }
   } else { // software
     for (int col = 0; col < n; col++) {

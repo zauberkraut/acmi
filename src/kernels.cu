@@ -3,6 +3,8 @@
    Custom ACMI CUDA kernels. */
 
 #include <assert.h>
+#include <cuda_fp16.h>
+#include <stdint.h>
 
 extern "C" size_t cuMemAvail() {
   size_t free, total;
@@ -38,14 +40,35 @@ extern "C" void cuDownload(void* hostDst, const void* devSrc, size_t size) {
   assert(cudaSuccess == cudaMemcpy(hostDst, devSrc, size, cudaMemcpyDeviceToHost));
 }
 
-static __global__ void kernPromote(double* dst, const float* src, const int64_t n2) {
+static __global__ void kern32to16(__half* dst, const float* src, const int64_t n2) {
+  for (int64_t i = 0; i < n2; i++) {
+    dst[i] = __float2half(src[i]);
+  }
+}
+
+extern "C" void cuDemote(uint16_t* dst, float* src, int64_t n2) {
+  kern32to16<<<1, 1>>>((__half*)dst, src, n2);
+  assert(cudaSuccess == cudaGetLastError());
+}
+
+static __global__ void kern16to32(float* dst, const __half* src, const int64_t n2) {
+  for (int64_t i = 0; i < n2; i++) {
+    dst[i] = __half2float(src[i]);
+  }
+}
+
+static __global__ void kern32to64(double* dst, const float* src, const int64_t n2) {
   for (int64_t i = 0; i < n2; i++) {
     dst[i] = src[i];
   }
 }
 
-extern "C" void cuPromote(double* dst, float* src, int64_t n2) {
-  kernPromote<<<1, 1>>>(dst, src, n2);
+extern "C" void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2) {
+  switch (srcElemSize) {
+  case 2: kern16to32<<<1, 1>>>((float*)dst, (const __half*)src, n2); break;
+  case 4: kern32to64<<<1, 1>>>((double*)dst, (const float*)src, n2); break;
+  case 8: /* WIP */; break;
+  }
   assert(cudaSuccess == cudaGetLastError());
 }
 

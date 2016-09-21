@@ -21,8 +21,6 @@ static void testMatBasic(void** state) {
   assert_non_null(MatElems(m));
   assert_ptr_equal(MatCol(m, 1), MatElems(m) + n*4);
   assert_false(MatDev(m));
-  assert_false(MatSymm(m));
-  assert_false(MatSparse(m));
 
   MatClear(m);
   for (int row = 0; row < n; row++) {
@@ -64,8 +62,6 @@ static void testMat64(void** state) {
   assert_non_null(MatElems(m));
   assert_ptr_equal(MatCol(m, 1), MatElems(m) + n*8);
   assert_false(MatDev(m));
-  assert_false(MatSymm(m));
-  assert_false(MatSparse(m));
 
   MatPut(m, 0, 0, 1);
   MatPut(m, n - 1, n - 1, 1);

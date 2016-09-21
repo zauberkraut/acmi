@@ -9,7 +9,7 @@ cc = gcc
 nvcc = nvcc
 
 main = $(build)/main.o
-modules = $(build)/util.o $(build)/mat.o $(build)/invert.o $(build)/blas.o \
+modules = $(build)/util.o $(build)/mat.o $(build)/invert.o $(build)/linalg.o \
           $(build)/kernels.obj $(build)/mmio.o
 tests = $(build)/test.o
 
@@ -17,7 +17,8 @@ oflags = -O3
 wflags = -Wall -Werror
 cflags = -std=c99 $(oflags) $(wflags) -I/usr/local/cuda/include \
          -D_POSIX_C_SOURCE=200809L
-libs = -lm -llapacke -lopenblas -lpthread -L/usr/local/cuda/lib64 -lcudart -lcublas -lstdc++
+libs = -lm -llapacke -lopenblas -lpthread -L/usr/local/cuda/lib64 -lcudart \
+       -lcublas -lstdc++
 
 $(bin): $(main) $(modules)
 	$(cc) -o $(@) $(^) $(libs)

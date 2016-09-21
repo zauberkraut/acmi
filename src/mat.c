@@ -18,8 +18,6 @@ struct Mat_ {
   size_t pitch; // bytes per row
   void* elems;  // the linear array of matrix entries
   bool dev;     // is matrix in device memory?
-  bool symm;    // is matrix symmetric?
-  bool sparse;  // is matrix sparse?
   double trace; // the sum of the diagonal entries
 };
 
@@ -34,20 +32,18 @@ union Elem {
 double ElemVal(union Elem* e, int size) {
   double val = INFINITY;
   switch (size) {
-    case 2:  val = e->fp16;      break; // TODO
-    case 4:  val = e->fp32;      break;
-    case 8:  val = e->fp64;      break;
-    case 16: val = e->fp64x2.hi; break; // TODO;
+  case 4:  val = e->fp32;               break;
+  case 8:  val = e->fp64;               break;
+  case 16: val = e->fp64x2.hi;          break; // TODO;
   }
   return val;
 }
 
 void ElemSet(union Elem* e, int size, double val) {
   switch (size) {
-    case 2:  e->fp16 = 0; /* TODO */               break;
-    case 4:  e->fp32 = val;                        break;
-    case 8:  e->fp64 = val;                        break;
-    case 16: e->fp64x2.hi = val; e->fp64x2.lo = 0; break;
+  case 4:  e->fp32 = val;                        break;
+  case 8:  e->fp64 = val;                        break;
+  case 16: e->fp64x2.hi = val; e->fp64x2.lo = 0; break;
   }
 }
 
@@ -79,7 +75,7 @@ Mat MatNew(int n, int elemSize, bool dev) {
 
 /* Same as MatNew(), but sources parameters from a given template matrix. */
 Mat MatBuild(Mat m) {
-  return MatNew(m->n, MatElemSize(m), m->dev);
+  return MatNew(m->n, m->elemSize, m->dev);
 }
 
 /* Frees a matrix' elements, but not the matrix struct itself. */
@@ -118,8 +114,6 @@ size_t MatPitch(Mat m) { return m->pitch; }
 void* MatElems(Mat m) { return m->elems; }
 void* MatCol(Mat m, int col) { return elemAddr(m, 0, col); }
 bool MatDev(Mat m) { return m->dev; }
-bool MatSymm(Mat m) { return m->symm; }
-bool MatSparse(Mat m) { return m->sparse; }
 
 /* Returns a matrix' trace, lazily computing it. */
 double MatTrace(Mat m) {
@@ -162,30 +156,45 @@ void MatToHost(Mat m) {
 
 /* Converts a 32-bit matrix to 64-bit. */
 void MatPromote(Mat m) {
-  assert(MatElemSize(m) < 16);
+  assert(m->elemSize < 16);
 
-  struct Mat_ m32 = *m;
-  m->elemSize = 8; // TODO: double double
+  struct Mat_ mOrig = *m;
+  m->elemSize *= 2; // TODO: double double
   m->size <<= 1;
   m->pitch <<= 1;
   MatNewElems(m, m->dev);
-  double* dst = m->elems;
-  float* src = m32.elems;
 
   if (m->dev) {
-    cuPromote(dst, src, m32.n2);
+    cuPromote(m->elems, mOrig.elems, mOrig.elemSize, mOrig.n2);
   } else {
-    for (int64_t i = 0; i < m32.n2; i++) {
-      dst[i] = src[i];
+    for (int64_t i = 0; i < mOrig.n2; i++) {
+      switch (mOrig.elemSize) {
+      case 4: ((double*)m->elems)[i] = ((float*)mOrig.elems)[i]; break;
+      case 8: fatal("WIP"); break;
+      }
     }
   }
+
+  MatFreeElems(&mOrig);
+}
+
+void MatDemote(Mat m) {
+  assert(m->dev && m->elemSize == 4);
+
+  struct Mat_ m32 = *m;
+  m->elemSize /= 2;
+  m->size >>= 1;
+  m->pitch >>= 1;
+  MatNewElems(m, m->dev);
+
+  cuDemote((uint16_t*)m->elems, (float*)m32.elems, m32.n2);
 
   MatFreeElems(&m32);
 }
 
 /* Returns a matrix element. */
 double MatGet(Mat m, int row, int col) {
-  assert(row >= 0 && row < m->n && col >= 0 && col < m->n);
+  assert(!m->dev && row >= 0 && row < m->n && col >= 0 && col < m->n);
   union Elem e;
   m->dev ? cuDownload(&e, elemAddr(m, row, col), m->elemSize)
          : memcpy(&e, elemAddr(m, row, col), m->elemSize);
@@ -194,7 +203,7 @@ double MatGet(Mat m, int row, int col) {
 
 /* Sets a matrix element. */
 void MatPut(Mat m, int row, int col, double elem) {
-  assert(row >= 0 && row < m->n && col >= 0 && col < m->n);
+  assert(!m->dev && row >= 0 && row < m->n && col >= 0 && col < m->n);
   union Elem e;
   ElemSet(&e, m->elemSize, elem);
   m->dev ? cuUpload(elemAddr(m, row, col), &e, m->elemSize)
@@ -255,8 +264,6 @@ Mat MatLoad(const char* path, int elemSize, bool attrOnly) {
   }
 
   Mat m = MatNew(n, elemSize, false);
-  m->symm = mm_is_symmetric(matCode);
-  m->sparse = sparsity < SPARSITY_THRESHOLD;
   const int symmSign = skew ? -1 : 1;
 
   if (coord) {
@@ -300,55 +307,30 @@ Mat MatLoad(const char* path, int elemSize, bool attrOnly) {
 }
 
 /* Writes a matrix out to a given path. */
-// TODO: implement symmetric output
 void MatWrite(Mat m, const char* path) {
-  if (m->dev) fatal("only host matrices may be written to disk");
+  if (m->dev) {
+    fatal("only host matrices may be written to disk");
+  }
   FILE* out = fopen(path, "w");
-  if (!out) fatal("couldn't open %s to write random matrix", path);
+  if (!out) {
+    fatal("couldn't open %s to write random matrix", path);
+  }
 
   MM_typecode matCode;
   mm_initialize_typecode(&matCode);
   mm_set_matrix(&matCode);
   mm_set_real(&matCode);
+  mm_set_array(&matCode);
   const int n = m->n;
 
-  debug("writing %g MiB %dx%d matrix in %s format", mibibytes(MatSize(m)),
-        n, n, m->sparse ? "coordinate" : "array");
-
-  m->sparse ? mm_set_coordinate(&matCode) : mm_set_array(&matCode);
+  debug("writing %g MiB %dx%d matrix in array format", mibibytes(MatSize(m)),
+        n, n);
 
   mm_write_banner(out, matCode);
-
-  if (m->sparse) { // take advantage of the coordinate format
-    // count nonzero elements
-    // TODO: count during next loop instead and write the size later
-    int64_t nNonzero = 0;
+  mm_write_mtx_array_size(out, n, n);
+  for (int col = 0; col < n; col++) {
     for (int row = 0; row < n; row++) {
-      for (int col = 0; col < n; col++) {
-        if (MatGet(m, row, col) != 0) {
-          nNonzero++;
-        }
-      }
-    }
-
-    debug("writing %ld nonzero elements", nNonzero);
-    mm_write_mtx_crd_size(out, n, n, nNonzero);
-
-    for (int col = 0; col < n; col++) {
-      for (int row = 0; row < n; row++) {
-        double elem = MatGet(m, row, col);
-        if (elem != 0) {
-          fprintf(out, "%d %d %g\n", row + 1, col + 1, elem);
-        }
-      }
-    }
-  } else { // dense, array output
-    mm_write_mtx_array_size(out, n, n);
-
-    for (int col = 0; col < n; col++) {
-      for (int row = 0; row < n; row++) {
-        fprintf(out, "%g\n", MatGet(m, row, col));
-      }
+      fprintf(out, "%g\n", MatGet(m, row, col));
     }
   }
 
@@ -359,7 +341,6 @@ void MatWrite(Mat m, const char* path) {
    entries of which shall be positive to avoid ill-conditioning. */
 Mat MatRandDiagDom(int n, int elemSize, bool symm) {
   Mat m = MatNew(n, elemSize, false);
-  m->symm = symm;
   m->trace = 0;
 
   for (int row = 0; row < n; row++) {
@@ -393,7 +374,6 @@ Mat MatRandDiagDom(int n, int elemSize, bool symm) {
 void MatDebug(Mat m) {
   debug("matrix is:\n"
         "%dx%dx%d = %g MiB, %ld elements, %ld bytes per col\n"
-        "dev: %d, symm: %d, sparse: %d, trace %g", m->n, m->n, m->elemSize,
-        mibibytes(m->size), m->n2, m->pitch, m->dev, m->symm, m->sparse,
-        m->trace);
+        "dev: %d, trace %g", m->n, m->n, m->elemSize, mibibytes(m->size), m->n2,
+        m->pitch, m->dev, m->trace);
 }
