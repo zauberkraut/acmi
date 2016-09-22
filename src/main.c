@@ -279,7 +279,6 @@ int main(int argc, char* argv[]) {
     mA = MatLoad(optarg, elemSize, infoMode);
   }
 
-  MatDebug(mA);
   const double matMiB = mibibytes(MatSize(mA));
   debug("%.3f MiB/matrix; allocating %.3f MiB total", matMiB, 4*matMiB);
 

@@ -6,39 +6,40 @@
 #include <cuda_fp16.h>
 #include <stdint.h>
 
-// TODO mass extern c
-extern "C" size_t cuMemAvail() {
+extern "C" {
+
+size_t cuMemAvail() {
   size_t free, total;
   assert(cudaSuccess == cudaMemGetInfo(&free, &total));
   return free;
 }
 
-extern "C" void* cuMalloc(size_t size) {
+void* cuMalloc(size_t size) {
   void* p;
   assert(cudaSuccess == cudaMalloc(&p, size));
   return p;
 }
 
-extern "C" void cuFree(void* p) { assert(cudaSuccess == cudaFree(p)); }
+void cuFree(void* p) { assert(cudaSuccess == cudaFree(p)); }
 
-extern "C" void cuClear(void* p, size_t size) {
+void cuClear(void* p, size_t size) {
   assert(cudaSuccess == cudaMemset(p, 0, size));
 }
 
-extern "C" void cuUpload(void* devDst, const void* hostSrc, size_t size) {
+void cuUpload(void* devDst, const void* hostSrc, size_t size) {
   assert(cudaSuccess == cudaMemcpy(devDst, hostSrc, size,
                                    cudaMemcpyHostToDevice));
 }
 
-extern "C" void cuPin(void* p, size_t size) {
+void cuPin(void* p, size_t size) {
   assert(cudaSuccess == cudaHostRegister(p, size, cudaHostRegisterPortable));
 }
 
-extern "C" void cuUnpin(void* p) {
+void cuUnpin(void* p) {
   assert(cudaSuccess == cudaHostUnregister(p));
 }
 
-extern "C" void cuDownload(void* hostDst, const void* devSrc, size_t size) {
+void cuDownload(void* hostDst, const void* devSrc, size_t size) {
   assert(cudaSuccess == cudaMemcpy(hostDst, devSrc, size,
          cudaMemcpyDeviceToHost));
 }
@@ -57,7 +58,7 @@ static __global__ void kern32to64(double* dst, const float* src,
   }
 }
 
-extern "C" void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2) {
+void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2) {
   switch (srcElemSize) {
   case 2: kern16to32<<<1, 1>>>((float*)dst, (const __half*)src, n2); break;
   case 4: kern32to64<<<1, 1>>>((double*)dst, (const float*)src, n2); break;
@@ -85,7 +86,7 @@ static __global__ void kern64SetDiag(double* elems, double alpha, int n) {
   }
 }
 
-extern "C" void cuSetDiag(void* elems, double alpha, int n, int elemSize) {
+void cuSetDiag(void* elems, double alpha, int n, int elemSize) {
   switch (elemSize) {
   case 2:
     kern16SetDiag<<<1, 1>>>((__half*)elems, alpha, n);
@@ -125,7 +126,7 @@ static __global__ void kern64Norm(const double* a, const int64_t n2) {
   d_froNorm = sqrt(sum);
 }
 
-extern "C" double cuNorm(void* elems, int64_t n2, int elemSize) {
+double cuNorm(void* elems, int64_t n2, int elemSize) {
   switch (elemSize) {
   case 2: kern16Norm<<<1, 1>>>((__half*)elems, n2); break;
   case 4: kern32Norm<<<1, 1>>>((float*)elems, n2);  break;
@@ -174,7 +175,7 @@ static __global__ void kern64NormSubFromI(double* a, int n) {
   d_froNorm = sqrt(sum);
 }
 
-extern "C" double cuNormSubFromI(void* elems, int n, int elemSize) {
+double cuNormSubFromI(void* elems, int n, int elemSize) {
   switch (elemSize) {
   case 2: kern16NormSubFromI<<<1, 1>>>((__half*)elems, n); break;
   case 4: kern32NormSubFromI<<<1, 1>>>((float*)elems, n);  break;
@@ -212,11 +213,13 @@ static __global__ void kern64Add3I(double* a, int n) {
   }
 }
 
-extern "C" void cuAdd3I(void* elems, int n, int elemSize) {
+void cuAdd3I(void* elems, int n, int elemSize) {
   switch (elemSize) {
   case 2: kern16Add3I<<<1, 1>>>((__half*)elems, n); break;
   case 4: kern32Add3I<<<1, 1>>>((float*)elems, n);  break;
   case 8: kern64Add3I<<<1, 1>>>((double*)elems, n); break;
   }
   assert(cudaSuccess == cudaGetLastError());
+}
+
 }
