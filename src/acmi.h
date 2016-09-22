@@ -14,12 +14,22 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum { MAX_MAT_DIM = 32768, MAX_ELEM_SIZE = 8 };
 
 struct Mat_;
 typedef struct Mat_* Mat;
 struct Double2 { double hi, lo; };
-union Elem;
+/* For generic handling of floating-point precisions. */
+union Elem {
+  uint16_t fp16;
+  float fp32;
+  double fp64;
+  struct Double2 fp64x2;
+};
 
 // util.c
 void setVerbose(bool b);
@@ -27,6 +37,9 @@ void debug(const char* msg, ...);
 void warn(const char* msg, ...);
 void fatal(const char* msg, ...);
 double mibibytes(size_t size);
+bool f16cSupported();
+uint16_t singleToHalf(float f);
+float halfToSingle(uint16_t h);
 
 // mat.c
 Mat MatNew(int n, int elemSize, bool dev);
@@ -45,7 +58,6 @@ double MatTrace(Mat m);
 void MatToDev(Mat m);
 void MatToHost(Mat m);
 void MatPromote(Mat m);
-void MatDemote(Mat m);
 double MatGet(Mat m, int row, int col);
 void MatPut(Mat m, int row, int col, double elem);
 Mat MatLoad(const char* path, int elemSize, bool attrOnly);
@@ -60,7 +72,7 @@ void ElemSet(union Elem* e, int size, double val);
 double altmanInvert(Mat mA, Mat *mRp, int convOrder, double errLimit,
                     int msLimit, double convRateLimit);
 
-// blas.c
+// linalg.c
 void cublasInit();
 void cublasShutDown();
 void transpose(double alpha, Mat mA, Mat mT);
@@ -81,13 +93,13 @@ void cuDownload(void* hostDst, const void* devSrc, size_t size);
 void cuPin(void* p, size_t size);
 void cuUnpin(void* p);
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2);
-void cuDemote(uint16_t* dst, float* src, int64_t n2);
 void cuSetDiag(void* elems, double alpha, int n, int elemSize);
 double cuNorm(void* elems, int64_t n2, int elemSize);
 double cuNormSubFromI(void* elems, int n, int elemSize);
 void cuAdd3I(void* elems, int n, int elemSize);
 
-double halfToDouble(uint16_t h);
-uint16_t doubleToHalf(double d);
+#ifdef __cplusplus
+} // end extern "C"
+#endif
 
 #endif

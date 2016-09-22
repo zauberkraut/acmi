@@ -20,17 +20,10 @@ struct Mat_ {
   double trace; // the sum of the diagonal entries
 };
 
-/* For generic handling of floating-point precisions. */
-union Elem {
-  uint16_t fp16;
-  float fp32;
-  double fp64;
-  struct Double2 fp64x2;
-};
-
 double ElemVal(union Elem* e, int size) {
   double val = INFINITY;
   switch (size) {
+  case 2:  val = halfToSingle(e->fp16); break;
   case 4:  val = e->fp32;               break;
   case 8:  val = e->fp64;               break;
   case 16: val = e->fp64x2.hi;          break; // TODO;
@@ -40,6 +33,7 @@ double ElemVal(union Elem* e, int size) {
 
 void ElemSet(union Elem* e, int size, double val) {
   switch (size) {
+  case 2:  e->fp16 = singleToHalf(val);          break;
   case 4:  e->fp32 = val;                        break;
   case 8:  e->fp64 = val;                        break;
   case 16: e->fp64x2.hi = val; e->fp64x2.lo = 0; break;
@@ -143,12 +137,12 @@ void MatToHost(Mat m) {
 
 /* Converts a 32-bit matrix to 64-bit. */
 void MatPromote(Mat m) {
-  assert(m->elemSize < 16);
+  assert(m->elemSize < MAX_ELEM_SIZE);
 
   struct Mat_ mOrig = *m;
-  m->elemSize *= 2; // TODO: double double
-  m->size <<= 1;
-  m->pitch <<= 1;
+  m->elemSize <<= 1; // TODO: double double
+  m->size     <<= 1;
+  m->pitch    <<= 1;
   MatNewElems(m, m->dev);
 
   if (m->dev) {
@@ -163,20 +157,6 @@ void MatPromote(Mat m) {
   }
 
   MatFreeElems(&mOrig);
-}
-
-void MatDemote(Mat m) {
-  assert(m->dev && m->elemSize == 4);
-
-  struct Mat_ m32 = *m;
-  m->elemSize /= 2;
-  m->size >>= 1;
-  m->pitch >>= 1;
-  MatNewElems(m, m->dev);
-
-  cuDemote((uint16_t*)m->elems, (float*)m32.elems, m32.n2);
-
-  MatFreeElems(&m32);
 }
 
 /* Returns a matrix element. */

@@ -14,7 +14,7 @@
 
 enum {
   MAX_PATH_LEN = 255,
-  MIN_ELEM_BITS = 32,
+  MIN_ELEM_BITS = 16,
   MAX_ELEM_BITS = 64,
   DEFAULT_ELEM_SIZE = 4,
   MIN_CONV_ORDER = 1,
@@ -229,8 +229,8 @@ int main(int argc, char* argv[]) {
     fatal("unexpected argument: %s", argv[optind+1]);
   }
 
-  if (elemSize == 2 && softMode) {
-    fatal("half-precision floating-point only supported on the GPU");
+  if (elemSize == 2 && (softMode || !f16cSupported())) {
+    fatal("half-precision mode requires F16C instruction support and GPU.");
   }
 
   if (!softMode) {
@@ -250,7 +250,6 @@ int main(int argc, char* argv[]) {
   }
 
   Mat mA = 0;
-  const int loadElemSize = elemSize == 2 ? 4 : elemSize;
 
   if (randDim) { // random mode
     if (!prngSeed) { // if user supplied no seed, use time
@@ -259,12 +258,12 @@ int main(int argc, char* argv[]) {
     debug("seeding PRNG with %x", prngSeed);
     srand(prngSeed);
 
-    debug("generating %d-bit random %dx%d%s%s%s%s matrix...", 8*loadElemSize,
+    debug("generating %d-bit random %dx%d%s%s%s%s matrix...", 8*elemSize,
           randDim, randDim, randSymm ? " symmetric" : "",
           randReal ? "" : " integer", randNeg ? "" : " nonnegative",
           randDiagDom ? "\n  diagonally-dominant" : "");
 
-    mA = MatNewRand(randDim, loadElemSize, randMaxElem, randSymm, randReal,
+    mA = MatNewRand(randDim, elemSize, randMaxElem, randSymm, randReal,
                     randNeg, randDiagDom);
 
     if (randOutPath) { // optionally write randomly-generated matrix
@@ -277,15 +276,10 @@ int main(int argc, char* argv[]) {
       fatal("options -RNDVUS apply only to random matrices");
     }
     debug("loading %s", optarg);
-    mA = MatLoad(optarg, loadElemSize, infoMode);
+    mA = MatLoad(optarg, elemSize, infoMode);
   }
 
-  if (elemSize == 2) {
-    debug("demoting loaded matrix to 16-bit, original size: %.3f MiB",
-          mibibytes(MatSize(mA)));
-    MatDemote(mA);
-  }
-
+  MatDebug(mA);
   const double matMiB = mibibytes(MatSize(mA));
   debug("%.3f MiB/matrix; allocating %.3f MiB total", matMiB, 4*matMiB);
 
@@ -316,10 +310,6 @@ int main(int argc, char* argv[]) {
 
   Mat mR = 0;
   altmanInvert(mA, &mR, convOrder, errLimit, msLimit, convRateLimit);
-
-  if (MatElemSize(mA) == 2) {
-    MatPromote(mA);
-  }
 
   if (outPath) { // optionally write inverted matrix
     MatToHost(mR); // if inverse is on the GPU, download it

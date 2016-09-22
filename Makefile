@@ -16,7 +16,7 @@ tests = $(build)/test.o
 oflags = -O3
 wflags = -Wall -Werror
 cflags = -std=c99 $(oflags) $(wflags) -I/usr/local/cuda/include \
-         -D_POSIX_C_SOURCE=200809L
+         -D_POSIX_C_SOURCE=200809L -mf16c
 libs = -lm -llapacke -lopenblas -lpthread -L/usr/local/cuda/lib64 -lcudart \
        -lcublas -lstdc++
 

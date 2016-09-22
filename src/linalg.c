@@ -27,14 +27,22 @@ void transpose(double alpha, Mat mA, Mat mT) {
   assert(n == MatN(mT));
 
   if (MatDev(mA)) {
-    if (8 == MatElemSize(mA)) {
-      double beta = 0;
+    switch (MatElemSize(mA)) {
+      union Elem a, beta;
+
+    case 2:
+      // TODO
+      break;
+    case 4:
+      a.fp32 = alpha; beta.fp32 = 0;
+      cublasSgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &a.fp32,
+                  MatElems(mA), n, &beta.fp32, MatElems(mT), n, MatElems(mT), n);
+      break;
+    case 8:
+      beta.fp64 = 0;
       cublasDgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &alpha,
-                  MatElems(mA), n, &beta, MatElems(mT), n, MatElems(mT), n);
-    } else {
-      float alpha32 = alpha; float beta32 = 0;
-      cublasSgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &alpha32,
-                  MatElems(mA), n, &beta32, MatElems(mT), n, MatElems(mT), n);
+                  MatElems(mA), n, &beta.fp64, MatElems(mT), n, MatElems(mT), n);
+      break;
     }
   } else { // perform host memory transpose
     for (int row = 0; row < n; row++) {
@@ -58,13 +66,24 @@ void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
   const int n = MatN(mA);
 
   if (MatDev(mA)) { // matrix elements reside in device memory
-    if (8 == MatElemSize(mA)) { // entries are double-precision
+    switch (MatElemSize(mA)) {
+      union Elem a, b;
+
+    case 2:
+      a.fp16 = singleToHalf(alpha); b.fp16 = singleToHalf(beta);
+      cublasHgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n,
+                  (__half*)&a.fp16, MatElems(mA), n, MatElems(mB), n,
+                  (__half*)&b.fp16, MatElems(mC), n);
+      break;
+    case 4:
+      a.fp32 = alpha; b.fp32 = beta;
+      cublasSgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &a.fp32,
+                  MatElems(mA), n, MatElems(mB), n, &b.fp32, MatElems(mC), n);
+      break;
+    case 8:
       cublasDgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
                   MatElems(mA), n, MatElems(mB), n, &beta, MatElems(mC), n);
-    } else { // entries are single-precision
-      float alpha32 = alpha; float beta32 = beta;
-      cublasSgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha32,
-                  MatElems(mA), n, MatElems(mB), n, &beta32, MatElems(mC), n);
+      break;
     }
   } else { // matrix elements reside in host memory
     if (8 == MatElemSize(mA)) {
@@ -84,13 +103,21 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
   const int n = MatN(mA);
 
   if (MatDev(mA)) {
-    if (8 == MatElemSize(mA)) {
+    switch (MatElemSize(mA)) {
+      union Elem a, b;
+
+    case 2:
+      // TODO
+      break;
+    case 4:
+      a.fp32 = alpha; b.fp32 = beta;
+      cublasSgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &a.fp32,
+                  MatElems(mA), n, &b.fp32, MatElems(mB), n, MatElems(mC), n);
+      break;
+    case 8:
       cublasDgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha,
                   MatElems(mA), n, &beta, MatElems(mB), n, MatElems(mC), n);
-    } else {
-      float alpha32 = alpha; float beta32 = beta;
-      cublasSgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha32,
-                  MatElems(mA), n, &beta32, MatElems(mB), n, MatElems(mC), n);
+      break;
     }
   } else { // software
     for (int col = 0; col < n; col++) {
