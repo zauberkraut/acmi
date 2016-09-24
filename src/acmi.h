@@ -97,6 +97,7 @@ void cuSetDiag(void* elems, double alpha, int n, int elemSize);
 double cuNorm(void* elems, int64_t n2, int elemSize);
 double cuNormSubFromI(void* elems, int n, int elemSize);
 void cuAdd3I(void* elems, int n, int elemSize);
+void cuHgeam(float alpha, void* a, float beta, void* b, void* c, int64_t n2);
 
 #ifdef __cplusplus
 } // end extern "C"

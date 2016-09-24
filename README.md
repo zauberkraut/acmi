@@ -27,11 +27,11 @@ To run unit tests:
 `make test`
 
 For usage instructions, run (after building):  
-`build/acmi`
+`acmi`
 
 To invert a 10000x10000 random, diagonally-dominant integer matrix using cuBLAS
 without writing any matrix files, run:  
-`build/acmi ?10000`
+`acmi ?10000`
 
 Large, sparse matrices can be found [here](
 https://www.cise.ufl.edu/research/sparse/matrices/

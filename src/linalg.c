@@ -31,7 +31,13 @@ void transpose(double alpha, Mat mA, Mat mT) {
       union Elem a, beta;
 
     case 2:
-      // TODO
+      // no 16-bit version of geam yet, though this won't be called often
+      // TODO: alpha*A*A^T elsewhere
+      // TODO: optimize for col-major ordering
+      a.fp16 = singleToHalf(alpha); beta.fp16 = 0;
+      cublasHgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, n,
+                  (__half*)&a.fp16, MatElems(mA), n, MatElems(mA), n,
+                  (__half*)&beta.fp16, MatElems(mT), n);
       break;
     case 4:
       a.fp32 = alpha; beta.fp32 = 0;
@@ -107,7 +113,9 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
       union Elem a, b;
 
     case 2:
-      // TODO
+      a.fp32 = alpha; b.fp32 = beta;
+      cuHgeam(a.fp32, MatElems(mA), b.fp32, MatElems(mB), MatElems(mC),
+              MatN2(mA));
       break;
     case 4:
       a.fp32 = alpha; b.fp32 = beta;

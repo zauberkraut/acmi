@@ -229,8 +229,11 @@ int main(int argc, char* argv[]) {
     fatal("unexpected argument: %s", argv[optind+1]);
   }
 
-  if (elemSize == 2 && (softMode || !f16cSupported())) {
-    fatal("half-precision mode requires F16C instruction support and GPU.");
+  if (elemSize == 2) {
+    warn("half-precision support is highly experimental!");
+    if (softMode || !f16cSupported()) {
+      fatal("half-precision mode requires F16C instruction support and GPU.");
+    }
   }
 
   if (!softMode) {

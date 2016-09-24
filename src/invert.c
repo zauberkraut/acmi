@@ -37,26 +37,30 @@ double altmanInvert(Mat mA, Mat* mRp, int convOrder, double errLimit,
   Mat mR = MatBuild(mA);
   MatClear(mR);
   setDiag(mR, alpha);
-  bool posDef = true;
   double err = traceErr(alpha, mA);
 
   for (int iter = 0; msSince() < msLimit; iter++) {
+    static bool posDef = true;
+    static double prevErr = INFINITY;
+
     gemm(1, mA, mR, 0, mAR);
     // TODO: replace with sweep squares
     if (iter || !posDef) {
       err = normSubFromI(mAR);
     }
-    static double prevErr = INFINITY;
     // rate of convergence
     const double convRate = fabs(err)/pow(fabs(prevErr), 3);
 
     debug("%*sR%d: err = %.4e, μ = %.4e", iter < 10, "", iter, err, convRate);
 
-    if (err <= errLimit) {
+    if (err <= errLimit) { // we've achieved the desired accuracy
       break;
     }
 
+    // handle divergence
     if (posDef && err > prevErr && iter < POSDEF_STEP_THRESH) {
+      /* Our attempt to exploit the self-adjoint R0 = alpha*I failed. Use the
+         slower R0 = alpha*A*A^T starting point instead. */
       debug("diverged, retrying with alternate R0...");
       swap(&mX, &mR); // back up R to its previous value
       posDef = false;
@@ -100,7 +104,7 @@ double altmanInvert(Mat mA, Mat* mRp, int convOrder, double errLimit,
         break;
       default: fatal("unsupported convergence order: %d", convOrder);
     }
-  }
+  } // end while
 
   debug("inversion halted after %d ms", msSince());
   if (err > errLimit) {

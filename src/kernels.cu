@@ -31,17 +31,17 @@ void cuUpload(void* devDst, const void* hostSrc, size_t size) {
                                    cudaMemcpyHostToDevice));
 }
 
+void cuDownload(void* hostDst, const void* devSrc, size_t size) {
+  assert(cudaSuccess == cudaMemcpy(hostDst, devSrc, size,
+         cudaMemcpyDeviceToHost));
+}
+
 void cuPin(void* p, size_t size) {
   assert(cudaSuccess == cudaHostRegister(p, size, cudaHostRegisterPortable));
 }
 
 void cuUnpin(void* p) {
   assert(cudaSuccess == cudaHostUnregister(p));
-}
-
-void cuDownload(void* hostDst, const void* devSrc, size_t size) {
-  assert(cudaSuccess == cudaMemcpy(hostDst, devSrc, size,
-         cudaMemcpyDeviceToHost));
 }
 
 static __global__ void kern16to32(float* dst, const __half* src,
@@ -219,6 +219,18 @@ void cuAdd3I(void* elems, int n, int elemSize) {
   case 4: kern32Add3I<<<1, 1>>>((float*)elems, n);  break;
   case 8: kern64Add3I<<<1, 1>>>((double*)elems, n); break;
   }
+  assert(cudaSuccess == cudaGetLastError());
+}
+
+static __global__ void kernHgeam(float alpha, __half* a, float beta, __half* b,
+                                 __half* c, int64_t n2) {
+  for (int64_t i = 0; i < n2; i++) {
+    c[i] = __float2half(alpha * __half2float(a[i]) + beta * __half2float(b[i]));
+  }
+}
+
+void cuHgeam(float alpha, void* a, float beta, void* b, void* c, int64_t n2) {
+  kernHgeam<<<1, 1>>>(alpha, (__half*)a, beta, (__half*)b, (__half*)c, n2);
   assert(cudaSuccess == cudaGetLastError());
 }
 
