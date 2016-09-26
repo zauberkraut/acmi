@@ -17,7 +17,7 @@ enum {
   MIN_ELEM_BITS = 16,
   MAX_ELEM_BITS = 64,
   DEFAULT_ELEM_SIZE = 4,
-  MIN_CONV_ORDER = 1,
+  MIN_CONV_ORDER = 2,
   MAX_CONV_ORDER = 4,
   DEFAULT_CONV_ORDER = 3,
   DEFAULT_MS_LIMIT = 60000, // one minute
@@ -101,7 +101,7 @@ void usage() {
          "  -f          Print matrix file info and exit\n"
          "  -c          Perform all computations in software without the GPU\n"
          "  -o <path>   Output computed matrix inverse to path\n"
-         "  -q <order>  Set the order of convergence (1-4, default: %s)\n"
+         "  -q <order>  Set the order of convergence (2-4, default: %s)\n"
          "  -p <#bits>  Set initial matrix element floating-point precision\n"
          "              (32 or 64, default: %d)\n"
          "  -e <+real>  Set inversion error limit (default: %g)\n"
@@ -160,7 +160,8 @@ int main(int argc, char* argv[]) {
       break;
     case 'q':
       convOrder = (int)parseInt(10, MIN_CONV_ORDER, MAX_CONV_ORDER,
-                                "conversion order must be 1-4");
+                                "conversion order must be %d-%d",
+                                MIN_CONV_ORDER, MAX_CONV_ORDER);
       break;
     case 'p':
       i = (int)parseInt(10, MIN_ELEM_BITS, MAX_ELEM_BITS,
@@ -298,7 +299,6 @@ int main(int argc, char* argv[]) {
 
   const char* orderStr = "<error>";
   switch (convOrder) {
-    case 1: orderStr = "linear";    break;
     case 2: orderStr = "quadratic"; break;
     case 3: orderStr = "cubic";     break;
     case 4: orderStr = "quartic";   break;

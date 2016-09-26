@@ -102,6 +102,8 @@ double altmanInvert(Mat mA, Mat* mRp, int convOrder, double errLimit,
         swap(&mR, &mAR);          // mR  <- next R,     mAR <- previous R
         swap(&mX, &mAR);          // mX  <- previous R, mAR <- junk
         break;
+      case 4:
+        break;
       default: fatal("unsupported convergence order: %d", convOrder);
     }
   } // end while
