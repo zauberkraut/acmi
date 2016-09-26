@@ -10,7 +10,7 @@ nvcc = nvcc
 
 main = $(build)/main.o
 modules = $(build)/util.o $(build)/mat.o $(build)/invert.o $(build)/linalg.o \
-          $(build)/kernels.obj $(build)/mmio.o
+          $(build)/util.obj $(build)/kernels.obj $(build)/mmio.o
 tests = $(build)/test.o
 
 oflags = -O3

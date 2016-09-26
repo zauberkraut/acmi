@@ -161,6 +161,16 @@ void setDiag(Mat mA, double alpha) {
   }
 }
 
+void addDiag(Mat mA, double alpha) {
+  if (MatDev(mA)) {
+    cuAddDiag(MatElems(mA), alpha, MatN(mA), MatElemSize(mA));
+  } else {
+    for (int diag = 0; diag < MatN(mA); diag++) {
+      MatPut(mA, diag, diag, alpha + MatGet(mA, diag, diag));
+    }
+  }
+}
+
 /* Computes the Frobenius norm of a matrix. */
 double norm(Mat mA) {
   const int n = MatN(mA);
@@ -189,15 +199,5 @@ double normSubFromI(Mat mA) {
       }
     }
     return sqrt(sum);
-  }
-}
-
-void add3I(Mat mA) {
-  if (MatDev(mA)) {
-    cuAdd3I(MatElems(mA), MatN(mA), MatElemSize(mA));
-  } else {
-    for (int diag = 0; diag < MatN(mA); diag++) {
-      MatPut(mA, diag, diag, 3 + MatGet(mA, diag, diag));
-    }
   }
 }

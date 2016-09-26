@@ -41,9 +41,9 @@ extern int optind, opterr, optopt;
 /* Parses an integer argument of the given radix from the command line, aborting
    after printing errMsg if an error occurs or the integer exceeds the given
    bounds. */
-long parseInt(int radix, long min, long max, const char* errMsg) {
+int parseInt(int radix, int min, int max, const char* errMsg) {
   char* parsePtr = 0;
-  long l = strtol(optarg, &parsePtr, radix);
+  int l = strtol(optarg, &parsePtr, radix);
   if (parsePtr - optarg != strlen(optarg) || l < min || l > max ||
       ERANGE == errno) {
     fatal(errMsg);
@@ -160,8 +160,7 @@ int main(int argc, char* argv[]) {
       break;
     case 'q':
       convOrder = (int)parseInt(10, MIN_CONV_ORDER, MAX_CONV_ORDER,
-                                "conversion order must be %d-%d",
-                                MIN_CONV_ORDER, MAX_CONV_ORDER);
+                                "conversion order must be 2-4");
       break;
     case 'p':
       i = (int)parseInt(10, MIN_ELEM_BITS, MAX_ELEM_BITS,
@@ -284,7 +283,9 @@ int main(int argc, char* argv[]) {
   }
 
   const double matMiB = mibibytes(MatSize(mA));
-  debug("%.3f MiB/matrix; allocating %.3f MiB total", matMiB, 4*matMiB);
+  const int matCount = convOrder < 4 ? 4 : 5;
+  debug("%.3f MiB/matrix; allocating %.3f MiB total", matMiB,
+        matCount * matMiB);
 
   if (infoMode) {
     debug("matrix info-only mode: terminating");

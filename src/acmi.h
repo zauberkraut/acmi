@@ -69,8 +69,9 @@ double ElemVal(union Elem* e, int size);
 void ElemSet(union Elem* e, int size, double val);
 
 // invert.c
-double altmanInvert(Mat mA, Mat *mRp, int convOrder, double errLimit,
-                    int msLimit, double convRateLimit);
+double altmanInvert(const Mat mA, Mat *mRp, const int convOrder,
+                    const double errLimit, const int msLimit,
+                    const double convRateLimit);
 
 // linalg.c
 void cublasInit();
@@ -79,11 +80,11 @@ void transpose(double alpha, Mat mA, Mat mT);
 void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC);
 void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC);
 void setDiag(Mat mA, double alpha);
+void addDiag(Mat mA, double alpha);
 double norm(Mat mA);
 double normSubFromI(Mat mA);
-void add3I(Mat mA);
 
-// kernels.c
+// util.cu
 size_t cuMemAvail();
 void* cuMalloc(size_t size);
 void cuFree(void* p);
@@ -92,11 +93,13 @@ void cuUpload(void* devDst, const void* hostSrc, size_t size);
 void cuDownload(void* hostDst, const void* devSrc, size_t size);
 void cuPin(void* p, size_t size);
 void cuUnpin(void* p);
+
+// kernels.cu
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2);
 void cuSetDiag(void* elems, double alpha, int n, int elemSize);
+void cuAddDiag(void* elems, double alpha, int n, int elemSize);
 double cuNorm(void* elems, int64_t n2, int elemSize);
 double cuNormSubFromI(void* elems, int n, int elemSize);
-void cuAdd3I(void* elems, int n, int elemSize);
 void cuHgeam(float alpha, void* a, float beta, void* b, void* c, int64_t n2);
 
 #ifdef __cplusplus

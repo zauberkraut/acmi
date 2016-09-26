@@ -4,7 +4,7 @@
 
 #include "acmi.h"
 
-static const double POSDEF_STEP_THRESH = 5;
+enum { POSDEF_STEP_THRESH = 5 };
 
 static double traceErr(double alpha, Mat mA) {
   return sqrt(MatN(mA) + 1 - 2*alpha*MatTrace(mA));
@@ -24,17 +24,21 @@ static void swap(Mat* mp, Mat* np) {
   *np = t;
 }
 
-double altmanInvert(Mat mA, Mat* mRp, int convOrder, double errLimit,
-                    int msLimit, double convRateLimit) {
+// TODO: fix 1111.mtx explosion
+double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
+                    const double errLimit, const int msLimit,
+                    double convRateLimit) {
   clock_gettime(CLOCK_MONOTONIC, &g_startTime);
 
   debug("initializing work matrices...");
-  Mat mAR = MatBuild(mA), mX = MatBuild(mA);
+  Mat mR = MatBuild(mA),
+      mAR = MatBuild(mA),
+      mX = MatBuild(mA),
+      mY = convOrder > 3 ? MatBuild(mA) : 0;
 
   const double alpha = 1/norm(mA);
   debug("computed alpha = %g", alpha);
 
-  Mat mR = MatBuild(mA);
   MatClear(mR);
   setDiag(mR, alpha);
   double err = traceErr(alpha, mA);
@@ -43,13 +47,13 @@ double altmanInvert(Mat mA, Mat* mRp, int convOrder, double errLimit,
     static bool posDef = true;
     static double prevErr = INFINITY;
 
-    gemm(1, mA, mR, 0, mAR);
+    gemm(1, mA, mR, 0, mAR); // mAR <- AR
     // TODO: replace with sweep squares
     if (iter || !posDef) {
       err = normSubFromI(mAR);
     }
     // rate of convergence
-    const double convRate = fabs(err)/pow(fabs(prevErr), 3);
+    const double convRate = fabs(err)/pow(fabs(prevErr), convOrder);
 
     debug("%*sR%d: err = %.4e, μ = %.4e", iter < 10, "", iter, err, convRate);
 
@@ -62,16 +66,23 @@ double altmanInvert(Mat mA, Mat* mRp, int convOrder, double errLimit,
       /* Our attempt to exploit the self-adjoint R0 = alpha*I failed. Use the
          slower R0 = alpha*A*A^T starting point instead. */
       debug("diverged, retrying with alternate R0...");
-      swap(&mX, &mR); // back up R to its previous value
       posDef = false;
       transpose(alpha, mA, mR);
+      // TODO (which one?)
+      //transpose(alpha, mA, mX);
+      //gemm(1, mA, mX, 0, mR);
       prevErr = INFINITY;
       iter = -1;
       continue;
     } else if (MatElemSize(mA) < MAX_ELEM_SIZE && convRateLimit > 0 &&
                (convRate > convRateLimit || err > prevErr)) {
       debug("diverging, extending to double precision...");
+      // TODO: back up or not (another threshold?)
+      //swap(&mX, &mR); // back up R to its previous value
       MatPromote(mA); MatPromote(mR); MatPromote(mAR); MatPromote(mX);
+      if (mY) {
+        MatPromote(mY);
+      }
       prevErr = INFINITY; // our 32-bit error might have been truncated
       iter--;
       continue;
@@ -91,18 +102,25 @@ double altmanInvert(Mat mA, Mat* mRp, int convOrder, double errLimit,
       case 2:
         gemm(1, mR, mAR, 0, mX);  // mX  <- RAR
         geam(-1, mX, 2, mR, mAR); // mAR <- 2R - RAR = next R
-        swap(&mR, &mAR);          // mR  <- next R,     mAR <- previous R
+        swap(&mR, &mAR);          // mR  <- next R, mAR <- previous R
         swap(&mX, &mAR);          // mX  <- previous R, mAR <- junk
         break;
       case 3:
         gemm(1, mAR, mAR, 0, mX); // mX  <- (AR)^2
-        add3I(mX);                // mX  <- 3I + (AR)^2
-        geam(-3, mAR, 1, mX, mX); // mX  <- 3I - 3AR + (AR)^2
+        geam(-3, mAR, 1, mX, mX); // mX  <- -3AR + (AR)^2
+        addDiag(mX, 3);           // mX  <- 3I - 3AR + (AR)^2
         gemm(1, mR, mX, 0, mAR);  // mAR <- R(3I - 3AR + (AR)^2) = next R
-        swap(&mR, &mAR);          // mR  <- next R,     mAR <- previous R
-        swap(&mX, &mAR);          // mX  <- previous R, mAR <- junk
+        swap(&mR, &mAR);          // mR  <- next R, mAR <- previous R
+        swap(&mX, &mAR);          // mX  <- previous R
         break;
       case 4:
+        gemm(1, mAR, mAR, 0, mX); // mX <- (AR)^2
+        geam(-4, mAR, 1, mX, mX); // mX <- -4AR + (AR)^2
+        addDiag(mX, 6);           // mX <- 6I - 4AR + (AR)^2
+        gemm(-1, mAR, mX, 0, mY); // mY <- -AR(6I - 4AR + (AR)^2)
+        addDiag(mY, 4);           // mY <- 4I - AR(6I - 4AR + (AR)^2)
+        swap(&mR, &mX);           // mX <- previous R
+        gemm(1, mX, mY, 0, mR);   // mR <- R(4I - AR(6I - 4AR + (AR)^2))
         break;
       default: fatal("unsupported convergence order: %d", convOrder);
     }
@@ -113,7 +131,11 @@ double altmanInvert(Mat mA, Mat* mRp, int convOrder, double errLimit,
     warn("failed to converge to error < %g within %d ms", errLimit, msLimit);
   }
 
-  MatFree(mAR); MatFree(mX);
+  MatFree(mAR);
+  MatFree(mX);
+  if (mY) {
+    MatFree(mY);
+  }
   *mRp = mR;
   return err;
 }
