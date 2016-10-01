@@ -67,7 +67,7 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
          slower R0 = alpha*A*A^T starting point instead. */
       debug("diverged, retrying with alternate R0...");
       posDef = false;
-      transpose(alpha, mA, mR);
+      transpose(alpha*alpha, mA, mR);
       // TODO (which one?)
       //transpose(alpha, mA, mX);
       //gemm(1, mA, mX, 0, mR);
