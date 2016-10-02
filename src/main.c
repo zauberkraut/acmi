@@ -29,10 +29,10 @@ static const double
   #define MIN_CONV_RATE 1e-5
   MIN_CONV_RATE_FACTOR = 1. + MIN_CONV_RATE,
   MAX_CONV_RATE = 1e6,
-  DEFAULT_CONV_RATE_LIMIT = -1.01;
+  DEFAULT_CONV_RATE_LIMIT = 1;
 
 static const char* DEFAULT_CONV_ORDER_STR = "cubic";
-static const char* DEFAULT_CONV_RATE_LIMIT_STR = "x1.01";
+static const char* DEFAULT_CONV_RATE_LIMIT_STR = "1";
 
 // for dealing with getopt arguments
 extern char *optarg;
@@ -100,6 +100,7 @@ void usage() {
          "Options:\n"
          "  -f          Print matrix file info and exit\n"
          "  -c          Perform all computations in software without the GPU\n"
+         "  -l          Use low-speed, safe initial R0 approximation\n"
          "  -o <path>   Output computed matrix inverse to path\n"
          "  -q <order>  Set the order of convergence (2-4, default: %s)\n"
          "  -p <#bits>  Set initial matrix element floating-point precision\n"
@@ -123,10 +124,11 @@ void usage() {
 
 int main(int argc, char* argv[]) {
   bool infoMode = false;
-  char* outPath = 0;
   bool softMode = false;
-  int elemSize = DEFAULT_ELEM_SIZE;
+  bool safeR0 = false;
+  char* outPath = 0;
   int convOrder = DEFAULT_CONV_ORDER;
+  int elemSize = DEFAULT_ELEM_SIZE;
   double errLimit = DEFAULT_ERR_LIMIT;
   int msLimit = DEFAULT_MS_LIMIT;
   double convRateLimit = DEFAULT_CONV_RATE_LIMIT;
@@ -142,13 +144,14 @@ int main(int argc, char* argv[]) {
 
   opterr = 0;
   int opt;
-  while ((opt = getopt(argc, argv, "fco:q:p:e:t:m:RNDV:U:S:")) != -1) {
+  while ((opt = getopt(argc, argv, "fclo:q:p:e:t:m:RNDV:U:S:")) != -1) {
     switch (opt) {
       int i;
       double d;
 
-    case 'f': infoMode = true;   break;
-    case 'c': softMode = true;   break;
+    case 'f': infoMode = true; break;
+    case 'c': softMode = true; break;
+    case 'l': safeR0 = true;   break;
 
     case 'R': randReal = true;    break;
     case 'N': randNeg = true;     break;
@@ -186,12 +189,12 @@ int main(int argc, char* argv[]) {
         i = -1;
         d = MIN_CONV_RATE_FACTOR;
       }
-      convRateLimit = i*parseFloat(d, MAX_CONV_RATE,
+      convRateLimit = i*parseFloat(d, MAX_CONV_RATE + 1,
                                    "invalid convergence rate limit");
       break;
 
     case 'V':
-      randMaxElem = parseFloat(0, INT_MAX,
+      randMaxElem = parseFloat(0, (int64_t)INT_MAX + 1,
                                "invalid max random element");
       break;
     case 'U':
@@ -312,7 +315,7 @@ int main(int argc, char* argv[]) {
   }
 
   Mat mR = 0;
-  altmanInvert(mA, &mR, convOrder, errLimit, msLimit, convRateLimit);
+  altmanInvert(mA, &mR, convOrder, errLimit, msLimit, convRateLimit, safeR0);
 
   if (outPath) { // optionally write inverted matrix
     MatToHost(mR); // if inverse is on the GPU, download it

@@ -4,8 +4,6 @@
 
 #include "acmi.h"
 
-enum { POSDEF_STEP_THRESH = 5 };
-
 static double traceErr(double alpha, Mat mA) {
   return sqrt(MatN(mA) + 1 - 2*alpha*MatTrace(mA));
 }
@@ -24,10 +22,9 @@ static void swap(Mat* mp, Mat* np) {
   *np = t;
 }
 
-// TODO: fix 1111.mtx explosion
 double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
                     const double errLimit, const int msLimit,
-                    double convRateLimit) {
+                    double convRateLimit, bool safeR0) {
   clock_gettime(CLOCK_MONOTONIC, &g_startTime);
 
   debug("initializing work matrices...");
@@ -38,18 +35,22 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
 
   const double alpha = 1/norm(mA);
   debug("computed alpha = %g", alpha);
+  double err = NAN;
 
-  MatClear(mR);
-  setDiag(mR, alpha);
-  double err = traceErr(alpha, mA);
+  if (safeR0) {
+    debug("starting with safe R0");
+    transpose(alpha*alpha, mA, mR);
+  } else {
+    MatClear(mR);
+    setDiag(mR, alpha);
+    err = traceErr(alpha, mA);
+  }
 
   for (int iter = 0; msSince() < msLimit; iter++) {
-    static bool posDef = true;
     static double prevErr = INFINITY;
 
     gemm(1, mA, mR, 0, mAR); // mAR <- AR
-    // TODO: replace with sweep squares
-    if (iter || !posDef) {
+    if (iter || safeR0) {
       err = normSubFromI(mAR);
     }
     // rate of convergence
@@ -62,31 +63,30 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
     }
 
     // handle divergence
-    if (posDef && err > prevErr && iter < POSDEF_STEP_THRESH) {
+    if (!safeR0 && err >= prevErr && iter < 2) {
       /* Our attempt to exploit the self-adjoint R0 = alpha*I failed. Use the
          slower R0 = alpha*A*A^T starting point instead. */
       debug("diverged, retrying with alternate R0...");
-      posDef = false;
+      safeR0 = true;
       transpose(alpha*alpha, mA, mR);
-      // TODO (which one?)
-      //transpose(alpha, mA, mX);
-      //gemm(1, mA, mX, 0, mR);
       prevErr = INFINITY;
       iter = -1;
       continue;
     } else if (MatElemSize(mA) < MAX_ELEM_SIZE && convRateLimit > 0 &&
-               (convRate > convRateLimit || err > prevErr)) {
+               (convRate >= convRateLimit || err >= prevErr)) {
       debug("diverging, extending to double precision...");
-      // TODO: back up or not (another threshold?)
-      //swap(&mX, &mR); // back up R to its previous value
       MatPromote(mA); MatPromote(mR); MatPromote(mAR); MatPromote(mX);
       if (mY) {
         MatPromote(mY);
       }
+      if (false) { // TODO
+        swap(&mX, &mR); // back up R to its previous value
+        iter--;
+      }
       prevErr = INFINITY; // our 32-bit error might have been truncated
-      iter--;
-      continue;
-    } else if (err > prevErr) {
+      //iter--; // TODO
+      //continue;
+    } else if (err >= prevErr || !isfinite(err)) {
       warn("diverged, R%d is the best we can do", iter - 1);
       swap(&mX, &mR); // back up R to its previous value
       err = prevErr;

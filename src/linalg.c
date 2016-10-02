@@ -42,12 +42,14 @@ void transpose(double alpha, Mat mA, Mat mT) {
     case 4:
       a.fp32 = alpha; beta.fp32 = 0;
       cublasSgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &a.fp32,
-                  MatElems(mA), n, &beta.fp32, MatElems(mT), n, MatElems(mT), n);
+                  MatElems(mA), n, &beta.fp32, MatElems(mT), n, MatElems(mT),
+                  n);
       break;
     case 8:
       beta.fp64 = 0;
       cublasDgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &alpha,
-                  MatElems(mA), n, &beta.fp64, MatElems(mT), n, MatElems(mT), n);
+                  MatElems(mA), n, &beta.fp64, MatElems(mT), n, MatElems(mT),
+                  n);
       break;
     }
   } else { // perform host memory transpose

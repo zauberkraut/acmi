@@ -71,7 +71,7 @@ void ElemSet(union Elem* e, int size, double val);
 // invert.c
 double altmanInvert(const Mat mA, Mat *mRp, const int convOrder,
                     const double errLimit, const int msLimit,
-                    const double convRateLimit);
+                    double convRateLimit, bool safeR0);
 
 // linalg.c
 void cublasInit();
