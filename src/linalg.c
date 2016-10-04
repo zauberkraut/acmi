@@ -9,16 +9,18 @@
 
 static cublasHandle_t g_cublasHandle = 0;
 
-void gpuSetUp(int n, int elemSize) {
-  debug("initializing cuBLAS");
+void gpuSetUp(const int maxBlocksPerKernel, const int n) {
+  debug("setting up cuBLAS");
   if (cublasCreate(&g_cublasHandle) != CUBLAS_STATUS_SUCCESS) {
     fatal("couldn't open cuBLAS handle");
   }
+  cuSetUp(maxBlocksPerKernel, n);
 }
 
 void gpuShutDown() {
-  debug("cleaning up cuBLAS");
+  debug("shutting down cuBLAS");
   if (g_cublasHandle) cublasDestroy(g_cublasHandle);
+  cuShutDown();
 }
 
 /* mT = alpha*mA^T */
@@ -30,15 +32,6 @@ void transpose(double alpha, Mat mA, Mat mT) {
     switch (MatElemSize(mA)) {
       union Elem a, beta;
 
-    case 2:
-      // no 16-bit version of geam yet, though this won't be called often
-      // TODO: alpha*A*A^T elsewhere
-      // TODO: optimize for col-major ordering
-      a.fp16 = singleToHalf(alpha); beta.fp16 = 0;
-      cublasHgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T, n, n, n,
-                  (__half*)&a.fp16, MatElems(mA), n, MatElems(mA), n,
-                  (__half*)&beta.fp16, MatElems(mT), n);
-      break;
     case 4:
       a.fp32 = alpha; beta.fp32 = 0;
       cublasSgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &a.fp32,
@@ -77,12 +70,6 @@ void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
     switch (MatElemSize(mA)) {
       union Elem a, b;
 
-    case 2:
-      a.fp16 = singleToHalf(alpha); b.fp16 = singleToHalf(beta);
-      cublasHgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n,
-                  (__half*)&a.fp16, MatElems(mA), n, MatElems(mB), n,
-                  (__half*)&b.fp16, MatElems(mC), n);
-      break;
     case 4:
       a.fp32 = alpha; b.fp32 = beta;
       cublasSgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &a.fp32,
@@ -114,11 +101,6 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
     switch (MatElemSize(mA)) {
       union Elem a, b;
 
-    case 2:
-      a.fp32 = alpha; b.fp32 = beta;
-      cuHgeam(a.fp32, MatElems(mA), b.fp32, MatElems(mB), MatElems(mC),
-              MatN2(mA));
-      break;
     case 4:
       a.fp32 = alpha; b.fp32 = beta;
       cublasSgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &a.fp32,

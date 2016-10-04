@@ -14,14 +14,16 @@
 
 enum {
   MAX_PATH_LEN = 255,
-  MIN_ELEM_BITS = 16,
+  MIN_ELEM_BITS = 32,
   MAX_ELEM_BITS = 64,
   DEFAULT_ELEM_SIZE = 4,
   MIN_CONV_ORDER = 2,
   MAX_CONV_ORDER = 4,
   DEFAULT_CONV_ORDER = 3,
   DEFAULT_MS_LIMIT = 60000, // one minute
-  MAX_MS_LIMIT = 86400000   // one day
+  MAX_MS_LIMIT = 86400000,  // one day
+  MAX_BLOCKS_PER_KERNEL = 1 << 16,
+  DEFAULT_MAX_BLOCKS_PER_KERNEL = 1024
 };
 
 static const double
@@ -41,7 +43,7 @@ extern int optind, opterr, optopt;
 /* Parses an integer argument of the given radix from the command line, aborting
    after printing errMsg if an error occurs or the integer exceeds the given
    bounds. */
-int parseUint(int radix, unsigned min, unsigned max, const char* errMsg) {
+int parsePosInt(int radix, unsigned min, unsigned max, const char* errMsg) {
   char* parsePtr = 0;
   unsigned i = (unsigned)strtoll(optarg, &parsePtr, radix);
   if (parsePtr - optarg != strlen(optarg) || i < min || i > max ||
@@ -110,6 +112,8 @@ void usage() {
          "  -m <+real>  Set max convergence rate allowed using single-precision; prepend\n"
          "              with 'x' to use a multiple (>= 1) of the starting rate\n"
          "              (default: %s)\n"
+         "  -b <+int>   Set max blocks run by each GPU kernel\n"
+         "              (default: %d, max: %d)\n"
          "Random matrix options:\n"
          "  -R          Enable real elements\n"
          "  -N          Enable negative elements\n"
@@ -117,8 +121,8 @@ void usage() {
          "  -V <+real>  Set max element magnitude (default: matrix dimension)\n"
          "  -U <path>   Output generated, uninverted matrix to path\n"
          "  -S <hex>    Set PRNG seed (not yet portable)\n\n",
-         DEFAULT_CONV_ORDER_STR, 8*DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT,
-         DEFAULT_CONV_RATE_LIMIT_STR);
+         DEFAULT_CONV_ORDER_STR, 8 * DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT,
+         DEFAULT_CONV_RATE_LIMIT_STR, DEFAULT_MAX_BLOCKS_PER_KERNEL, MAX_BLOCKS_PER_KERNEL);
   exit(0);
 }
 
@@ -132,6 +136,7 @@ int main(int argc, char* argv[]) {
   double errLimit = DEFAULT_ERR_LIMIT;
   int msLimit = DEFAULT_MS_LIMIT;
   double convRateLimit = DEFAULT_CONV_RATE_LIMIT;
+  int maxBlocksPerKernel = DEFAULT_MAX_BLOCKS_PER_KERNEL;
   int randDim = 0;
   bool randSymm = false, randReal = false, randNeg = false, randDiagDom = false;
   double randMaxElem = NAN;
@@ -144,7 +149,7 @@ int main(int argc, char* argv[]) {
 
   opterr = 0;
   int opt;
-  while ((opt = getopt(argc, argv, "fclo:q:p:e:t:m:RNDV:U:S:")) != -1) {
+  while ((opt = getopt(argc, argv, "fclo:q:p:e:t:m:b:RNDV:U:S:")) != -1) {
     switch (opt) {
       int i;
       double d;
@@ -162,12 +167,12 @@ int main(int argc, char* argv[]) {
       outPath = strndup(optarg, MAX_PATH_LEN);
       break;
     case 'q':
-      convOrder = (int)parseUint(10, MIN_CONV_ORDER, MAX_CONV_ORDER,
-                                 "conversion order must be 2-4");
+      convOrder = parsePosInt(10, MIN_CONV_ORDER, MAX_CONV_ORDER,
+                              "conversion order must be 2-4");
       break;
     case 'p':
-      i = (int)parseUint(10, MIN_ELEM_BITS, MAX_ELEM_BITS,
-                         "invalid floating-point precision");
+      i = parsePosInt(10, MIN_ELEM_BITS, MAX_ELEM_BITS,
+                      "invalid floating-point precision");
       d = log2(i);
       if (d != floor(d)) {
         fatal("invalid floating-point precision");
@@ -179,7 +184,7 @@ int main(int argc, char* argv[]) {
                             "error limit must be a real on [0, 1)");
       break;
     case 't':
-      msLimit = (int)parseUint(10, 0, MAX_MS_LIMIT, "invalid time limit in ms");
+      msLimit = parsePosInt(10, 0, MAX_MS_LIMIT, "invalid time limit in ms");
       break;
     case 'm':
       i = 1;
@@ -192,6 +197,10 @@ int main(int argc, char* argv[]) {
       convRateLimit = i*parseFloat(d, MAX_CONV_RATE + 1,
                                    "invalid convergence rate limit");
       break;
+    case 'b':
+      maxBlocksPerKernel = parsePosInt(10, 1, MAX_BLOCKS_PER_KERNEL,
+                                       "invalid max blocks per kernel");
+      break;
 
     case 'V':
       randMaxElem = parseFloat(0, (int64_t)INT_MAX + 1,
@@ -202,8 +211,8 @@ int main(int argc, char* argv[]) {
       randOutPath = strndup(optarg, MAX_PATH_LEN);
       break;
     case 'S':
-      prngSeed = (unsigned)parseUint(16, 1, UINT_MAX,
-                                     "invalid 32-bit hexadecimal seed");
+      prngSeed = (unsigned)parsePosInt(16, 1, UINT_MAX,
+                                       "invalid 32-bit hexadecimal seed");
       break;
 
     case '?':
@@ -232,13 +241,6 @@ int main(int argc, char* argv[]) {
     fatal("unexpected argument: %s", argv[optind+1]);
   }
 
-  if (elemSize == 2) {
-    warn("half-precision support is highly experimental!");
-    if (softMode || !f16cSupported()) {
-      fatal("half-precision mode requires F16C instruction support and GPU.");
-    }
-  }
-
   if (!softMode) {
     debug("%.3f MiB device memory available", mibibytes(cuMemAvail()));
   }
@@ -248,8 +250,8 @@ int main(int argc, char* argv[]) {
       randSymm = true;
     case '@':
       optarg++; // parse remainder of argument as the matrix dimension
-      randDim = (int)parseUint(10, 2, MAX_MAT_DIM,
-                               "invalid random matrix dimension");
+      randDim = parsePosInt(10, 2, MAX_MAT_DIM,
+                            "invalid random matrix dimension");
       if (isnan(randMaxElem)) {
         randMaxElem = randDim;
       }
@@ -295,10 +297,11 @@ int main(int argc, char* argv[]) {
     exit(0);
   }
 
-  if (!softMode) { // upload source matrix to GPU
-    MatToDev(mA);
-  } else {
+  if (softMode) { // upload source matrix to GPU
     debug("GPU acceleration disabled!");
+  } else {
+    gpuSetUp(maxBlocksPerKernel, MatN(mA));
+    MatToDev(mA);
   }
 
   const char* orderStr = "<error>";
@@ -309,10 +312,6 @@ int main(int argc, char* argv[]) {
   }
   debug("inverting %s with %s convergence...",
         randDim ? "random matrix" : optarg, orderStr);
-
-  if (!softMode) {
-    gpuSetUp();
-  }
 
   Mat mR = 0;
   altmanInvert(mA, &mR, convOrder, errLimit, msLimit, convRateLimit, safeR0);

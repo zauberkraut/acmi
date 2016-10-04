@@ -18,7 +18,10 @@
 extern "C" {
 #endif
 
+// TODO: are these used?
 enum { MAX_MAT_DIM = 32768, MAX_ELEM_SIZE = 8 };
+
+static inline int iMin(int a, int b) { return a < b ? a : b; }
 
 struct Mat_;
 typedef struct Mat_* Mat;
@@ -74,7 +77,7 @@ double altmanInvert(const Mat mA, Mat *mRp, const int convOrder,
                     double convRateLimit, bool safeR0);
 
 // linalg.c
-void gpuSetUp();
+void gpuSetUp(const int maxBlocksPerKernel, const int n);
 void gpuShutDown();
 void transpose(double alpha, Mat mA, Mat mT);
 void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC);
@@ -94,6 +97,8 @@ void cuPin(void* p, size_t size);
 void cuUnpin(void* p);
 
 // kernels.cu
+void cuSetUp(const int maxBlocksPerKernel, const int n);
+void cuShutDown();
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2);
 void cuSetDiag(void* elems, double alpha, int n, int elemSize);
 void cuAddDiag(void* elems, double alpha, int n, int elemSize);

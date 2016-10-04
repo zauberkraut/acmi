@@ -91,12 +91,12 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
       swap(&mX, &mR); // back up R to its previous value
       err = prevErr;
       break;
+    } else {
+      if (iter == 1 && convRateLimit < 0) {
+        convRateLimit *= -convRate;
+      }
+      prevErr = err;
     }
-
-    if (iter == 1 && convRateLimit < 0) {
-      convRateLimit *= -convRate;
-    }
-    prevErr = err;
 
     switch (convOrder) {
       case 2:

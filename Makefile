@@ -17,6 +17,7 @@ oflags = -O3
 wflags = -Wall -Werror
 cflags = -std=c99 $(oflags) $(wflags) -I/usr/local/cuda/include \
          -D_POSIX_C_SOURCE=200809L -mf16c
+nvflags = -std c++11 $(oflags) -Xcompiler "$(wflags)"
 libs = -lm -llapacke -lopenblas -lpthread -L/usr/local/cuda/lib64 -lcudart \
        -lcublas -lstdc++
 
@@ -29,7 +30,7 @@ $(build)/%.o: $(src)/%.c
 
 $(build)/%.obj: $(src)/%.cu
 	@mkdir -p $(build)
-	$(nvcc) -o $(@) $(oflags) -Xcompiler "$(wflags)" -c $(<)
+	$(nvcc) -o $(@) $(nvflags) -c $(<)
 
 debug: oflags = -O0 -g
 debug: $(bin)
