@@ -9,15 +9,15 @@
 
 static cublasHandle_t g_cublasHandle = 0;
 
-void cublasInit() {
+void gpuSetUp(int n, int elemSize) {
   debug("initializing cuBLAS");
   if (cublasCreate(&g_cublasHandle) != CUBLAS_STATUS_SUCCESS) {
     fatal("couldn't open cuBLAS handle");
   }
 }
 
-void cublasShutDown() {
-  debug("shutting down cuBLAS");
+void gpuShutDown() {
+  debug("cleaning up cuBLAS");
   if (g_cublasHandle) cublasDestroy(g_cublasHandle);
 }
 
@@ -174,32 +174,28 @@ void addDiag(Mat mA, double alpha) {
 }
 
 /* Computes the Frobenius norm of a matrix. */
-double norm(Mat mA) {
+double froNorm(Mat mA, bool subFromI) {
   const int n = MatN(mA);
   double froNorm;
 
   if (MatDev(mA)) {
-    froNorm = cuNorm(MatElems(mA), MatN2(mA), MatElemSize(mA));
+    froNorm = cuFroNorm(MatElems(mA), subFromI, n, MatElemSize(mA));
   } else { // software
-    froNorm = 8 == MatElemSize(mA) ?
-      LAPACKE_dlange(LAPACK_COL_MAJOR, 'F', n, n, MatElems(mA), n) :
-      LAPACKE_slange(LAPACK_COL_MAJOR, 'F', n, n, MatElems(mA), n);
+    if (subFromI) { // horribly slow!
+      double sum = 0;
+      for (int row = 0; row < MatN(mA); row++) {
+        for (int col = 0; col < MatN(mA); col++) {
+          double e = (row == col) - MatGet(mA, row, col);
+          sum += e*e;
+        }
+      }
+      froNorm = sqrt(sum);
+    } else {
+      froNorm = 8 == MatElemSize(mA) ?
+        LAPACKE_dlange(LAPACK_COL_MAJOR, 'F', n, n, MatElems(mA), n) :
+        LAPACKE_slange(LAPACK_COL_MAJOR, 'F', n, n, MatElems(mA), n);
+    }
   }
 
   return froNorm;
-}
-
-double normSubFromI(Mat mA) {
-  if (MatDev(mA)) {
-    return cuNormSubFromI(MatElems(mA), MatN(mA), MatElemSize(mA));
-  } else {
-    double sum = 0;
-    for (int row = 0; row < MatN(mA); row++) {
-      for (int col = 0; col < MatN(mA); col++) {
-        double e = (row == col) - MatGet(mA, row, col);
-        sum += e*e;
-      }
-    }
-    return sqrt(sum);
-  }
 }

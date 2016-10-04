@@ -33,7 +33,7 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
       mX = MatBuild(mA),
       mY = convOrder > 3 ? MatBuild(mA) : 0;
 
-  const double alpha = 1/norm(mA);
+  const double alpha = 1/froNorm(mA, false);
   debug("computed alpha = %g", alpha);
   double err = NAN;
 
@@ -51,7 +51,7 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
 
     gemm(1, mA, mR, 0, mAR); // mAR <- AR
     if (iter || safeR0) {
-      err = normSubFromI(mAR);
+      err = froNorm(mAR, true);
     }
     // rate of convergence
     const double convRate = fabs(err)/pow(fabs(prevErr), convOrder);

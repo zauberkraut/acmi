@@ -41,14 +41,14 @@ extern int optind, opterr, optopt;
 /* Parses an integer argument of the given radix from the command line, aborting
    after printing errMsg if an error occurs or the integer exceeds the given
    bounds. */
-int parseInt(int radix, int min, int max, const char* errMsg) {
+int parseUint(int radix, unsigned min, unsigned max, const char* errMsg) {
   char* parsePtr = 0;
-  int l = strtol(optarg, &parsePtr, radix);
-  if (parsePtr - optarg != strlen(optarg) || l < min || l > max ||
+  unsigned i = (unsigned)strtoll(optarg, &parsePtr, radix);
+  if (parsePtr - optarg != strlen(optarg) || i < min || i > max ||
       ERANGE == errno) {
     fatal(errMsg);
   }
-  return l;
+  return i;
 }
 
 double parseFloat(double min, double maxEx, const char* errMsg) {
@@ -162,12 +162,12 @@ int main(int argc, char* argv[]) {
       outPath = strndup(optarg, MAX_PATH_LEN);
       break;
     case 'q':
-      convOrder = (int)parseInt(10, MIN_CONV_ORDER, MAX_CONV_ORDER,
-                                "conversion order must be 2-4");
+      convOrder = (int)parseUint(10, MIN_CONV_ORDER, MAX_CONV_ORDER,
+                                 "conversion order must be 2-4");
       break;
     case 'p':
-      i = (int)parseInt(10, MIN_ELEM_BITS, MAX_ELEM_BITS,
-                        "invalid floating-point precision");
+      i = (int)parseUint(10, MIN_ELEM_BITS, MAX_ELEM_BITS,
+                         "invalid floating-point precision");
       d = log2(i);
       if (d != floor(d)) {
         fatal("invalid floating-point precision");
@@ -179,7 +179,7 @@ int main(int argc, char* argv[]) {
                             "error limit must be a real on [0, 1)");
       break;
     case 't':
-      msLimit = (int)parseInt(10, 0, MAX_MS_LIMIT, "invalid time limit in ms");
+      msLimit = (int)parseUint(10, 0, MAX_MS_LIMIT, "invalid time limit in ms");
       break;
     case 'm':
       i = 1;
@@ -202,8 +202,8 @@ int main(int argc, char* argv[]) {
       randOutPath = strndup(optarg, MAX_PATH_LEN);
       break;
     case 'S':
-      prngSeed = (unsigned)parseInt(16, 1, UINT_MAX,
-                                    "invalid 32-bit hexadecimal seed");
+      prngSeed = (unsigned)parseUint(16, 1, UINT_MAX,
+                                     "invalid 32-bit hexadecimal seed");
       break;
 
     case '?':
@@ -248,8 +248,8 @@ int main(int argc, char* argv[]) {
       randSymm = true;
     case '@':
       optarg++; // parse remainder of argument as the matrix dimension
-      randDim = (int)parseInt(10, 2, MAX_MAT_DIM,
-                              "invalid random matrix dimension");
+      randDim = (int)parseUint(10, 2, MAX_MAT_DIM,
+                               "invalid random matrix dimension");
       if (isnan(randMaxElem)) {
         randMaxElem = randDim;
       }
@@ -311,7 +311,7 @@ int main(int argc, char* argv[]) {
         randDim ? "random matrix" : optarg, orderStr);
 
   if (!softMode) {
-    cublasInit();
+    gpuSetUp();
   }
 
   Mat mR = 0;
@@ -328,7 +328,7 @@ int main(int argc, char* argv[]) {
   MatFree(mR);
 
   if (!softMode) {
-    cublasShutDown();
+    gpuShutDown();
   }
 
   return 0;

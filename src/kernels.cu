@@ -96,87 +96,52 @@ void cuAddDiag(void* elems, double alpha, int n, int elemSize) {
 
 __device__ double d_froNorm;
 
-static __global__ void kern16Norm(const __half* a, const int64_t n2) {
+static __global__ void
+kern16FroNorm(const __half* const a, const bool subFromI, const int n) {
   double sum = 0;
-  for (int64_t i = 0; i < n2; i++) {
-    double e = __half2float(a[i]);
-    sum += e*e;
+  for (int col = 0; col < n; col++) {
+    for (int row = 0; row < n; row++) {
+      int i = col*n + row;
+      double e = (subFromI && col == row) - __half2float(a[i]);
+      sum += e*e;
+    }
   }
   d_froNorm = sqrt(sum);
 }
 
-static __global__ void kern32Norm(const float* a, const int64_t n2) {
+static __global__ void
+kern32FroNorm(const float* const a, const bool subFromI, const int n) {
   double sum = 0;
-  for (int64_t i = 0; i < n2; i++) {
-    double e = a[i];
-    sum += e*e;
+  for (int col = 0; col < n; col++) {
+    for (int row = 0; row < n; row++) {
+      int i = col*n + row;
+      double e = (subFromI && col == row) - a[i];
+      sum += e*e;
+    }
   }
   d_froNorm = sqrt(sum);
 }
 
-static __global__ void kern64Norm(const double* a, const int64_t n2) {
+static __global__ void
+kern64FroNorm(const double* const a, const bool subFromI, const int n) {
   double sum = 0;
-  for (int64_t i = 0; i < n2; i++) {
-    double e = a[i];
-    sum += e*e;
+  for (int col = 0; col < n; col++) {
+    for (int row = 0; row < n; row++) {
+      int i = col*n + row;
+      double e = (subFromI && col == row) - a[i];
+      sum += e*e;
+    }
   }
   d_froNorm = sqrt(sum);
 }
 
-double cuNorm(void* elems, int64_t n2, int elemSize) {
+double cuFroNorm(void* elems, bool subFromI, int n, int elemSize) {
   switch (elemSize) {
-  case 2: kern16Norm<<<1, 1>>>((__half*)elems, n2); break;
-  case 4: kern32Norm<<<1, 1>>>((float*)elems, n2);  break;
-  case 8: kern64Norm<<<1, 1>>>((double*)elems, n2); break;
-  }
-
-  assert(cudaSuccess == cudaGetLastError());
-  typeof(d_froNorm) froNorm;
-  cudaMemcpyFromSymbol(&froNorm, d_froNorm, sizeof(froNorm), 0, cudaMemcpyDeviceToHost);
-  return froNorm;
-}
-
-static __global__ void kern16NormSubFromI(__half* a, int n) {
-  double sum = 0;
-  for (int col = 0; col < n; col++) {
-    for (int row = 0; row < n; row++) {
-      int i = col*n + row;
-      double e = (col == row) - __half2float(a[i]);
-      sum += e*e;
-    }
-  }
-  d_froNorm = sqrt(sum);
-}
-
-static __global__ void kern32NormSubFromI(float* a, int n) {
-  double sum = 0;
-  for (int col = 0; col < n; col++) {
-    for (int row = 0; row < n; row++) {
-      int i = col*n + row;
-      double e = (col == row) - a[i];
-      sum += e*e;
-    }
-  }
-  d_froNorm = sqrt(sum);
-}
-
-static __global__ void kern64NormSubFromI(double* a, int n) {
-  double sum = 0;
-  for (int col = 0; col < n; col++) {
-    for (int row = 0; row < n; row++) {
-      int i = col*n + row;
-      double e = (col == row) - a[i];
-      sum += e*e;
-    }
-  }
-  d_froNorm = sqrt(sum);
-}
-
-double cuNormSubFromI(void* elems, int n, int elemSize) {
-  switch (elemSize) {
-  case 2: kern16NormSubFromI<<<1, 1>>>((__half*)elems, n); break;
-  case 4: kern32NormSubFromI<<<1, 1>>>((float*)elems, n);  break;
-  case 8: kern64NormSubFromI<<<1, 1>>>((double*)elems, n); break;
+  case 2: kern16FroNorm<<<1, 1>>>((__half*)elems, subFromI, n); break;
+  case 4:
+    kern32FroNorm<<<1, 1>>>((float*)elems, subFromI, n);
+    break;
+  case 8: kern64FroNorm<<<1, 1>>>((double*)elems, subFromI, n); break;
   }
 
   assert(cudaSuccess == cudaGetLastError());

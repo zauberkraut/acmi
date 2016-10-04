@@ -74,15 +74,14 @@ double altmanInvert(const Mat mA, Mat *mRp, const int convOrder,
                     double convRateLimit, bool safeR0);
 
 // linalg.c
-void cublasInit();
-void cublasShutDown();
+void gpuSetUp();
+void gpuShutDown();
 void transpose(double alpha, Mat mA, Mat mT);
 void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC);
 void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC);
 void setDiag(Mat mA, double alpha);
 void addDiag(Mat mA, double alpha);
-double norm(Mat mA);
-double normSubFromI(Mat mA);
+double froNorm(Mat mA, bool subFromI);
 
 // util.cu
 size_t cuMemAvail();
@@ -98,8 +97,7 @@ void cuUnpin(void* p);
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2);
 void cuSetDiag(void* elems, double alpha, int n, int elemSize);
 void cuAddDiag(void* elems, double alpha, int n, int elemSize);
-double cuNorm(void* elems, int64_t n2, int elemSize);
-double cuNormSubFromI(void* elems, int n, int elemSize);
+double cuFroNorm(void* elems, bool subFromI, int n, int elemSize);
 void cuHgeam(float alpha, void* a, float beta, void* b, void* c, int64_t n2);
 
 #ifdef __cplusplus
