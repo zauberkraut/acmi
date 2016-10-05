@@ -2,6 +2,7 @@
 
    ACMI matrix type with functions. */
 
+#include <assert.h>
 #include <math.h>
 #include "acmi.h"
 #include "mmio.h"

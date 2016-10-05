@@ -2,7 +2,6 @@
 
    Custom ACMI CUDA kernels. */
 
-#include <cassert>
 #include <stdint.h>
 #include "acmi.h"
 
@@ -102,7 +101,7 @@ void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2) {
     break;
   case 8: /* WIP */; break;
   }
-  assert(cudaSuccess == cudaGetLastError());
+  CUCHECK;
 }
 
 void cuAddId(void* elems, double alpha, int n, int elemSize) {
@@ -111,7 +110,7 @@ void cuAddId(void* elems, double alpha, int n, int elemSize) {
   case 4: kernAddId<<<1, nThreads>>>((float*)elems, (float)alpha, n); break;
   case 8: kernAddId<<<1, nThreads>>>((double*)elems, alpha, n);       break;
   }
-  assert(cudaSuccess == cudaGetLastError());
+  CUCHECK;
 }
 
 // TODO: test manual gemm
@@ -137,7 +136,7 @@ double cuFroNorm(void* elems, bool subFromI, int n, int elemSize) {
 
   double froNorm2;
   cuDownload(&froNorm2, buckets, sizeof(double));
-  assert(cudaSuccess == cudaGetLastError());
+  CUCHECK;
   return sqrt(froNorm2);
 }
 

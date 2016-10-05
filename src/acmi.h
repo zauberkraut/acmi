@@ -5,7 +5,6 @@
 #ifndef ACMI_H
 #define ACMI_H
 
-#include <assert.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -95,6 +94,8 @@ void cuPin(void* p, size_t size);
 void cuUnpin(void* p);
 
 // kernels.cu
+#define CUCHECK cuCheck(__FILE__, __LINE__)
+void cuCheck(const char* fname, const size_t lnum);
 void cuSetUp(const int maxBlocksPerKernel, const int n);
 void cuShutDown();
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2);

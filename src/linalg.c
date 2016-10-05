@@ -2,6 +2,7 @@
  
    ACMI linear algebraic operations implemented using (cu)BLAS and CUDA. */
 
+#include <assert.h>
 #include <cublas_v2.h>
 #include <openblas/cblas.h>
 #include <lapacke.h>
@@ -26,7 +27,6 @@ void gpuShutDown() {
 /* mT = alpha*mA^T */
 void transpose(double alpha, Mat mA, Mat mT) {
   const int n = MatN(mA);
-  assert(n == MatN(mT));
 
   if (MatDev(mA)) {
     switch (MatElemSize(mA)) {

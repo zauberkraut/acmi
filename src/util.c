@@ -30,7 +30,7 @@ void fatal(const char* s, ...) {
   fprintf(stderr, "FATAL: ");
   va_list args; va_start(args, s);
   print(stderr, s, args);
-  exit(1);
+  abort();
 }
 
 double mibibytes(size_t size) {
