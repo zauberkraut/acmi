@@ -135,19 +135,9 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
   }
 }
 
-void setDiag(Mat mA, double alpha) {
+void addId(Mat mA, double alpha) {
   if (MatDev(mA)) {
-    cuSetDiag(MatElems(mA), alpha, MatN(mA), MatElemSize(mA));
-  } else {
-    for (int i = 0; i < MatN(mA); i++) {
-      MatPut(mA, i, i, alpha);
-    }
-  }
-}
-
-void addDiag(Mat mA, double alpha) {
-  if (MatDev(mA)) {
-    cuAddDiag(MatElems(mA), alpha, MatN(mA), MatElemSize(mA));
+    cuAddId(MatElems(mA), alpha, MatN(mA), MatElemSize(mA));
   } else {
     for (int diag = 0; diag < MatN(mA); diag++) {
       MatPut(mA, diag, diag, alpha + MatGet(mA, diag, diag));

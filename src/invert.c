@@ -42,7 +42,7 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
     transpose(alpha*alpha, mA, mR);
   } else {
     MatClear(mR);
-    setDiag(mR, alpha);
+    addId(mR, alpha);
     err = traceErr(alpha, mA);
   }
 
@@ -108,7 +108,7 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
       case 3:
         gemm(1, mAR, mAR, 0, mX); // mX  <- (AR)^2
         geam(-3, mAR, 1, mX, mX); // mX  <- -3AR + (AR)^2
-        addDiag(mX, 3);           // mX  <- 3I - 3AR + (AR)^2
+        addId(mX, 3);             // mX  <- 3I - 3AR + (AR)^2
         gemm(1, mR, mX, 0, mAR);  // mAR <- R(3I - 3AR + (AR)^2) = next R
         swap(&mR, &mAR);          // mR  <- next R, mAR <- previous R
         swap(&mX, &mAR);          // mX  <- previous R
@@ -116,9 +116,9 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
       case 4:
         gemm(1, mAR, mAR, 0, mX); // mX <- (AR)^2
         geam(-4, mAR, 1, mX, mX); // mX <- -4AR + (AR)^2
-        addDiag(mX, 6);           // mX <- 6I - 4AR + (AR)^2
+        addId(mX, 6);             // mX <- 6I - 4AR + (AR)^2
         gemm(-1, mAR, mX, 0, mY); // mY <- -AR(6I - 4AR + (AR)^2)
-        addDiag(mY, 4);           // mY <- 4I - AR(6I - 4AR + (AR)^2)
+        addId(mY, 4);             // mY <- 4I - AR(6I - 4AR + (AR)^2)
         swap(&mR, &mX);           // mX <- previous R
         gemm(1, mX, mY, 0, mR);   // mR <- R(4I - AR(6I - 4AR + (AR)^2))
         break;

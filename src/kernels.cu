@@ -7,48 +7,38 @@
 #include "acmi.h"
 
 namespace {
-  int g_maxBlocksPerGrid, g_maxThreadsPerBlock,
-      g_blocksPerKernel,  g_threadsPerBlock,
-      g_threadsPerKernel;
 
-__global__ void kern32to64(double* dst, const float* src,
-                                  const int64_t n2) {
-  for (int64_t i = 0; i < n2; i++) {
-    dst[i] = src[i];
-  }
-}
+int g_maxBlocksPerGrid, g_maxThreadsPerBlock,
+    g_blocksPerKernel,  g_threadsPerBlock,
+    g_threadsPerKernel;
 
-__global__ void kern32SetDiag(float* elems, float alpha, int n) {
-  for (int i = 0; i < n; i++) {
-    elems[i*n + i] = alpha;
-  }
-}
+template<typename T, typename U> __global__ void
+kernCopy(T* dst, const U* src, const int64_t n2) {
+  const int offset = blockIdx.x * blockDim.x + threadIdx.x;
+  const int stride = gridDim.x * blockDim.x;
+  const T* end = dst + n2;
+  src += offset;
+  dst += offset;
 
-__global__ void kern64SetDiag(double* elems, double alpha, int n) {
-  for (int i = 0; i < n; i++) {
-    elems[i*n + i] = alpha;
-  }
-}
-
-__global__ void kern32AddDiag(float* a, const float alpha,
-                                     const int n) {
-  for (int i = 0; i < n; i++) {
-    const int j = i*n + i;
-    a[j] = a[j] + alpha;
-  }
-}
-
-__global__ void kern64AddDiag(double* a, const double alpha,
-                                     const int n) {
-  for (int i = 0; i < n; i++) {
-    const int j = i*n + i;
-    a[j] = a[j] + alpha;
+  for (; dst < end; dst += stride, src += stride) {
+    *dst = *src;
   }
 }
 
 template<typename T> __global__ void
-kernSweepSquares(const T* const a, double* const buckets,
-                 const bool subFromI, const int n) {
+kernAddId(T* a, const T alpha, const int n) {
+  a += (blockIdx.x * blockDim.x + threadIdx.x) * (n + 1);
+  const int stride = gridDim.x * blockDim.x * (n + 1);
+  const T* end = a + n * n;
+
+  for (; a < end; a += stride) {
+    *a += alpha;
+  }
+}
+
+template<typename T> __global__ void
+kernSweepSquares(const T* const a, double* const buckets, const bool subFromI,
+                 const int n) {
   const int offset = blockIdx.x * blockDim.x + threadIdx.x;
   const int stride = gridDim.x * blockDim.x;
   const int64_t n2 = n * n;
@@ -64,7 +54,8 @@ kernSweepSquares(const T* const a, double* const buckets,
   buckets[offset] = sum;
 }
 
-__global__ void kernSweepSums(double* const buckets, const int bucketsLen) {
+template<typename T> __global__ void
+kernSweepSums(T* const buckets, const int bucketsLen) {
   const int offset = blockIdx.x * blockDim.x + threadIdx.x;
   const int stride = gridDim.x * blockDim.x;
 
@@ -89,11 +80,13 @@ void cuSetUp(const int maxBlocksPerKernel, const int n) {
   const int64_t n2 = n * n;
   g_blocksPerKernel = (n2 + g_maxThreadsPerBlock - 1) / g_maxThreadsPerBlock;
   g_blocksPerKernel = iMin(maxBlocksPerKernel, g_blocksPerKernel);
-  g_threadsPerBlock = n2 > g_maxThreadsPerBlock ? g_maxThreadsPerBlock : n2;
+  g_threadsPerBlock = iMin(g_maxThreadsPerBlock, n2);
   g_threadsPerKernel = g_threadsPerBlock * g_blocksPerKernel;
-  debug("  max blocks/grid: %d\nmax threads/block: %d\n"
-        "    blocks/kernel: %d\n    threads/block: %d\n"
-        "   threads/kernel: %d", g_maxBlocksPerGrid, g_maxThreadsPerBlock,
+  debug("  max  blocks/grid  : %d\n"
+        "  max threads/block : %d\n"
+        "       blocks/kernel: %d\n"
+        "      threads/block : %d\n"
+        "      threads/kernel: %d", g_maxBlocksPerGrid, g_maxThreadsPerBlock,
         g_blocksPerKernel, g_threadsPerBlock, g_threadsPerKernel);
 }
 
@@ -103,32 +96,26 @@ void cuShutDown() {
 
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2) {
   switch (srcElemSize) {
-  case 4: kern32to64<<<1, 1>>>((double*)dst, (const float*)src, n2); break;
+  case 4:
+    kernCopy<<<g_blocksPerKernel, g_threadsPerBlock>>>
+      ((double*)dst, (const float*)src, n2);
+    break;
   case 8: /* WIP */; break;
   }
   assert(cudaSuccess == cudaGetLastError());
 }
 
-void cuSetDiag(void* elems, double alpha, int n, int elemSize) {
+void cuAddId(void* elems, double alpha, int n, int elemSize) {
+  const int nThreads = iMin(g_maxThreadsPerBlock, n);
   switch (elemSize) {
-  case 4: kern32SetDiag<<<1, 1>>>((float*)elems, alpha, n);  break;
-  case 8: kern64SetDiag<<<1, 1>>>((double*)elems, alpha, n); break;
-  }
-  assert(cudaSuccess == cudaGetLastError());
-}
-
-void cuAddDiag(void* elems, double alpha, int n, int elemSize) {
-  switch (elemSize) {
-  case 4: kern32AddDiag<<<1, 1>>>((float*)elems,  alpha, n); break;
-  case 8: kern64AddDiag<<<1, 1>>>((double*)elems, alpha, n); break;
+  case 4: kernAddId<<<1, nThreads>>>((float*)elems, (float)alpha, n); break;
+  case 8: kernAddId<<<1, nThreads>>>((double*)elems, alpha, n);       break;
   }
   assert(cudaSuccess == cudaGetLastError());
 }
 
 // TODO: test manual gemm
 // TODO: test combined kernels
-// TODO: confirm thread count numbers
-// TODO: sweep sums opt
 double cuFroNorm(void* elems, bool subFromI, int n, int elemSize) {
   static double* buckets =
     (double*)cuMalloc(sizeof(double) * g_threadsPerKernel);
@@ -144,15 +131,14 @@ double cuFroNorm(void* elems, bool subFromI, int n, int elemSize) {
     break;
   }
 
-  kernSweepSums<<<1, 1>>>(buckets, g_threadsPerKernel);
+  const int nThreads = iMin(g_maxThreadsPerBlock, g_threadsPerKernel/4);
+  kernSweepSums<<<1, nThreads>>>(buckets, g_threadsPerKernel);
+  kernSweepSums<<<1, 1>>>(buckets, nThreads);
 
   double froNorm2;
   cuDownload(&froNorm2, buckets, sizeof(double));
+  assert(cudaSuccess == cudaGetLastError());
   return sqrt(froNorm2);
-}
-
-void cuHgeam(float alpha, void* a, float beta, void* b, void* c, int64_t n2) {
-  assert(false);
 }
 
 } // end extern "C"

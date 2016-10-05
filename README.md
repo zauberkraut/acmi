@@ -47,4 +47,3 @@ TODO:
   * Fix makefile quirks
   * Sprout CLI handler out of main() and handle conflicting options
   * Portable PRNG seeding
-  * Time-limited inversion

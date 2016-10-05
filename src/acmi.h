@@ -18,7 +18,6 @@
 extern "C" {
 #endif
 
-// TODO: are these used?
 enum { MAX_MAT_DIM = 32768, MAX_ELEM_SIZE = 8 };
 
 static inline int iMin(int a, int b) { return a < b ? a : b; }
@@ -82,8 +81,7 @@ void gpuShutDown();
 void transpose(double alpha, Mat mA, Mat mT);
 void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC);
 void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC);
-void setDiag(Mat mA, double alpha);
-void addDiag(Mat mA, double alpha);
+void addId(Mat mA, double alpha);
 double froNorm(Mat mA, bool subFromI);
 
 // util.cu
@@ -100,8 +98,7 @@ void cuUnpin(void* p);
 void cuSetUp(const int maxBlocksPerKernel, const int n);
 void cuShutDown();
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2);
-void cuSetDiag(void* elems, double alpha, int n, int elemSize);
-void cuAddDiag(void* elems, double alpha, int n, int elemSize);
+void cuAddId(void* elems, double alpha, int n, int elemSize);
 double cuFroNorm(void* elems, bool subFromI, int n, int elemSize);
 void cuHgeam(float alpha, void* a, float beta, void* b, void* c, int64_t n2);
 
