@@ -366,18 +366,11 @@ void MatPrint(Mat m) {
 
   for (int row = 0; row < extent; row++) {
     for (int col = 0; col < extent; col++) {
-      printf("%11g ", MatGet(m, row, col));
+      printf("%12g ", MatGet(m, row, col));
     }
     if (extent < m->n) {
       printf("...");
     }
     printf("\n");
   }
-  if (extent < m->n) {
-    for (int i = 0; i < extent; i++) {
-      printf("%11s ", "...");
-    }
-    printf("...");
-  }
-  printf("\n");
 }
