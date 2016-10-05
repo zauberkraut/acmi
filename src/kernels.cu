@@ -26,9 +26,9 @@ kernCopy(T* dst, const U* src, const int64_t n2) {
 
 template<typename T> __global__ void
 kernAddId(T* a, const T alpha, const int n) {
+  const T* end = a + n * n;
   a += (blockIdx.x * blockDim.x + threadIdx.x) * (n + 1);
   const int stride = gridDim.x * blockDim.x * (n + 1);
-  const T* end = a + n * n;
 
   for (; a < end; a += stride) {
     *a += alpha;
@@ -101,7 +101,6 @@ void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2) {
     break;
   case 8: /* WIP */; break;
   }
-  CUCHECK;
 }
 
 void cuAddId(void* elems, double alpha, int n, int elemSize) {
@@ -110,7 +109,6 @@ void cuAddId(void* elems, double alpha, int n, int elemSize) {
   case 4: kernAddId<<<1, nThreads>>>((float*)elems, (float)alpha, n); break;
   case 8: kernAddId<<<1, nThreads>>>((double*)elems, alpha, n);       break;
   }
-  CUCHECK;
 }
 
 // TODO: test manual gemm
@@ -136,7 +134,6 @@ double cuFroNorm(void* elems, bool subFromI, int n, int elemSize) {
 
   double froNorm2;
   cuDownload(&froNorm2, buckets, sizeof(double));
-  CUCHECK;
   return sqrt(froNorm2);
 }
 

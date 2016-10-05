@@ -22,8 +22,8 @@ enum {
   DEFAULT_CONV_ORDER = 3,
   DEFAULT_MS_LIMIT = 60000, // one minute
   MAX_MS_LIMIT = 86400000,  // one day
-  MAX_BLOCKS_PER_KERNEL = 1 << 16,
-  DEFAULT_MAX_BLOCKS_PER_KERNEL = 1024
+  MAX_BLOCKS_PER_KERNEL = (1 << 16) - 1,
+  DEFAULT_MAX_BLOCKS_PER_KERNEL = 40
 };
 
 static const double
