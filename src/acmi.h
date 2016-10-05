@@ -8,7 +8,6 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -61,11 +60,11 @@ void MatToHost(Mat m);
 void MatPromote(Mat m);
 double MatGet(Mat m, int row, int col);
 void MatPut(Mat m, int row, int col, double elem);
-Mat MatLoad(const char* path, int elemSize, bool attrOnly);
+Mat MatLoad(const char* path, int elemSize);
 void MatWrite(Mat m, const char* path);
 Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
                bool neg, bool diagDom);
-void MatDebug(Mat m);
+void MatPrint(Mat m);
 double ElemVal(union Elem* e, int size);
 void ElemSet(union Elem* e, int size, double val);
 

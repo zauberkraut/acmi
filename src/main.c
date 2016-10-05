@@ -2,6 +2,7 @@
 
    ACMI entry and setup. */
 
+// TODO: test manual gemm
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -20,8 +21,8 @@ enum {
   MIN_CONV_ORDER = 2,
   MAX_CONV_ORDER = 4,
   DEFAULT_CONV_ORDER = 3,
-  DEFAULT_MS_LIMIT = 60000, // one minute
-  MAX_MS_LIMIT = 86400000,  // one day
+  DEFAULT_MS_LIMIT = 120000, // 2 minutes
+  MAX_MS_LIMIT = 86400000,   // 1 day
   MAX_BLOCKS_PER_KERNEL = (1 << 16) - 1,
   DEFAULT_MAX_BLOCKS_PER_KERNEL = 40
 };
@@ -94,35 +95,35 @@ void checkWriteAccess(const char* path) {
 }
 
 void usage() {
-  printf("ACMI Convergent Matrix Inverter\nJ. Treadwell, 2016\n\n"
-         "Usage:\n  acmi [options] <input file>\n\n"
-         "  Currently, only Matrix Market files are supported as input and output.\n"
-         "  To generate and invert a random matrix, enter the matrix dimension\n"
-         "  prepended by '@' in lieu of the input file; prepend with '%%' for symmetry.\n\n"
-         "Options:\n"
-         "  -f          Print matrix file info and exit\n"
-         "  -c          Perform all computations in software without the GPU\n"
-         "  -l          Use low-speed, safe initial R0 approximation\n"
-         "  -o <path>   Output computed matrix inverse to path\n"
-         "  -q <order>  Set the order of convergence (2-4, default: %s)\n"
-         "  -p <#bits>  Set initial matrix element floating-point precision\n"
-         "              (32 or 64, default: %d)\n"
-         "  -e <+real>  Set inversion error limit (default: %g)\n"
-         "  -t <ms>     Set inversion time limit in ms (default: %d ms)\n"
-         "  -m <+real>  Set max convergence rate allowed using single-precision; prepend\n"
-         "              with 'x' to use a multiple (>= 1) of the starting rate\n"
-         "              (default: %s)\n"
-         "  -b <+int>   Set max blocks run by each GPU kernel\n"
-         "              (default: %d, max: %d)\n"
-         "Random matrix options:\n"
-         "  -R          Enable real elements\n"
-         "  -N          Enable negative elements\n"
-         "  -D          Generate dominant diagonal elements\n"
-         "  -V <+real>  Set max element magnitude (default: matrix dimension)\n"
-         "  -U <path>   Output generated, uninverted matrix to path\n"
-         "  -S <hex>    Set PRNG seed (not yet portable)\n\n",
-         DEFAULT_CONV_ORDER_STR, 8 * DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT,
-         DEFAULT_CONV_RATE_LIMIT_STR, DEFAULT_MAX_BLOCKS_PER_KERNEL, MAX_BLOCKS_PER_KERNEL);
+  debug("ACMI Convergent Matrix Inverter\nJ. Treadwell, 2016\n\n"
+        "Usage:\n  acmi [options] <input file>\n\n"
+        "  Currently, only Matrix Market files are supported as input and output.\n"
+        "  To generate and invert a random matrix, enter the matrix dimension\n"
+        "  prepended by '@' in lieu of the input file; prepend with '%%' for symmetry.\n\n"
+        "Options:\n"
+        "  -f          Print matrix file info and exit\n"
+        "  -c          Perform all computations in software without the GPU\n"
+        "  -l          Use low-speed, safe initial R0 approximation\n"
+        "  -o <path>   Output computed matrix inverse to path\n"
+        "  -q <order>  Set the order of convergence (2-4, default: %s)\n"
+        "  -p <#bits>  Set initial matrix element floating-point precision\n"
+        "              (32 or 64, default: %d)\n"
+        "  -e <+real>  Set inversion error limit (default: %g)\n"
+        "  -t <ms>     Set inversion time limit in ms (default: %d ms)\n"
+        "  -m <+real>  Set max convergence rate allowed using single-precision; prepend\n"
+        "              with 'x' to use a multiple (>= 1) of the starting rate\n"
+        "              (default: %s)\n"
+        "  -b <+int>   Set max blocks run by each GPU kernel\n"
+        "              (default: %d, max: %d)\n"
+        "Random matrix options:\n"
+        "  -R          Enable real elements\n"
+        "  -N          Enable negative elements\n"
+        "  -D          Generate dominant diagonal elements\n"
+        "  -V <+real>  Set max element magnitude (default: matrix dimension)\n"
+        "  -U <path>   Output generated, uninverted matrix to path\n"
+        "  -S <hex>    Set PRNG seed (not yet portable)\n\n",
+        DEFAULT_CONV_ORDER_STR, 8 * DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT,
+        DEFAULT_CONV_RATE_LIMIT_STR, DEFAULT_MAX_BLOCKS_PER_KERNEL, MAX_BLOCKS_PER_KERNEL);
   exit(0);
 }
 
@@ -271,7 +272,7 @@ int main(int argc, char* argv[]) {
       fatal("options -RNDVUS apply only to random matrices");
     }
     debug("loading %s", optarg);
-    mA = MatLoad(optarg, elemSize, infoMode);
+    mA = MatLoad(optarg, elemSize);
   }
 
   const double matMiB = mibibytes(MatSize(mA));
@@ -280,6 +281,7 @@ int main(int argc, char* argv[]) {
         matCount * matMiB);
 
   if (infoMode) {
+    MatPrint(mA);
     debug("matrix info-only mode: terminating");
     exit(0);
   }

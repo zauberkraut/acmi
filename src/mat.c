@@ -3,9 +3,11 @@
    ACMI matrix type with functions. */
 
 #include <assert.h>
-#include <math.h>
+#include <stdio.h>
 #include "acmi.h"
 #include "mmio.h"
+
+enum { MAT_PRINT_EXTENT = 8 };
 
 /* A matrix is sparse when its proportion of nonzero entries exceeds this. */
 static const double SPARSITY_THRESHOLD = 0.05;
@@ -179,7 +181,7 @@ void MatPut(Mat m, int row, int col, double elem) {
 }
 
 /* Loads a matrix of the given precision from a file. */
-Mat MatLoad(const char* path, int elemSize, bool attrOnly) {
+Mat MatLoad(const char* path, int elemSize) {
   FILE* in = fopen(path, "r");
   if (!in) {
     fatal("couldn't open %s", path);
@@ -230,11 +232,6 @@ Mat MatLoad(const char* path, int elemSize, bool attrOnly) {
     if (sparsity < SPARSITY_THRESHOLD) {
       debug("...and qualifies as sparse");
     }
-  }
-
-  if (attrOnly) { // user just wanted the file specs reported above; return
-    fclose(in);
-    return 0;
   }
 
   Mat m = MatNew(n, elemSize, false);
@@ -360,14 +357,27 @@ Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
   return m;
 }
 
-void MatDebug(Mat m) {
-  debug("matrix is: %dx%dx%d = %.3f MiB, %ld elements, %ld bytes per col\n"
-        "dev: %d, trace %g", m->n, m->n, m->elemSize, mibibytes(m->size), m->n2,
-        m->pitch, m->dev, m->trace);
-  for (int row = 0; row < m->n; row++) {
-    for (int col = 0; col < m->n; col++) {
-      printf("%.3f ", MatGet(m, row, col));
+void MatPrint(Mat m) {
+  assert(!m->dev);
+
+  debug("%ld %d-bit elements; %ld bytes per column; trace = %g\n",
+        m->n2, 8 * m->elemSize, m->pitch, m->trace);
+  const int extent = iMin(MAT_PRINT_EXTENT, m->n);
+
+  for (int row = 0; row < extent; row++) {
+    for (int col = 0; col < extent; col++) {
+      printf("%11g ", MatGet(m, row, col));
+    }
+    if (extent < m->n) {
+      printf("...");
     }
     printf("\n");
   }
+  if (extent < m->n) {
+    for (int i = 0; i < extent; i++) {
+      printf("%11s ", "...");
+    }
+    printf("...");
+  }
+  printf("\n");
 }

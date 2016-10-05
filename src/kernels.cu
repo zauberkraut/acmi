@@ -2,10 +2,12 @@
 
    Custom ACMI CUDA kernels. */
 
-#include <stdint.h>
+#include <cassert>
 #include "acmi.h"
 
 namespace {
+
+enum { SUM_SWEEP_FACTOR = 4 };
 
 int g_maxBlocksPerGrid, g_maxThreadsPerBlock,
     g_blocksPerKernel,  g_threadsPerBlock,
@@ -35,18 +37,18 @@ kernAddId(T* a, const T alpha, const int n) {
   }
 }
 
-template<typename T> __global__ void
-kernSweepSquares(const T* const a, double* const buckets, const bool subFromI,
+template<typename T, typename U> __global__ void
+kernSweepSquares(const T* const a, U* const buckets, const bool subFromI,
                  const int n) {
   const int offset = blockIdx.x * blockDim.x + threadIdx.x;
   const int stride = gridDim.x * blockDim.x;
   const int64_t n2 = n * n;
 
-  double sum = 0;
+  U sum = 0.;
 
   for (int64_t i = offset; i < n2; i += stride) {
-    int diag = subFromI && i % n == i / n;
-    double e = diag - a[i];
+    bool diag = subFromI && i % n == i / n;
+    U e = diag - a[i];
     sum += e*e;
   }
 
@@ -58,7 +60,7 @@ kernSweepSums(T* const buckets, const int bucketsLen) {
   const int offset = blockIdx.x * blockDim.x + threadIdx.x;
   const int stride = gridDim.x * blockDim.x;
 
-  double sumsum = 0;
+  T sumsum = 0.;
   for (int i = offset; i < bucketsLen; i += stride) {
     sumsum += buckets[i];
   }
@@ -81,11 +83,11 @@ void cuSetUp(const int maxBlocksPerKernel, const int n) {
   g_blocksPerKernel = iMin(maxBlocksPerKernel, g_blocksPerKernel);
   g_threadsPerBlock = iMin(g_maxThreadsPerBlock, n2);
   g_threadsPerKernel = g_threadsPerBlock * g_blocksPerKernel;
-  debug("  max  blocks/grid  : %d\n"
-        "  max threads/block : %d\n"
-        "       blocks/kernel: %d\n"
-        "      threads/block : %d\n"
-        "      threads/kernel: %d", g_maxBlocksPerGrid, g_maxThreadsPerBlock,
+  debug("max  blocks/grid  : %d\n"
+        "max threads/block : %d\n"
+        "     blocks/kernel: %d\n"
+        "    threads/block : %d\n"
+        "    threads/kernel: %d", g_maxBlocksPerGrid, g_maxThreadsPerBlock,
         g_blocksPerKernel, g_threadsPerBlock, g_threadsPerKernel);
 }
 
@@ -94,13 +96,9 @@ void cuShutDown() {
 }
 
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2) {
-  switch (srcElemSize) {
-  case 4:
-    kernCopy<<<g_blocksPerKernel, g_threadsPerBlock>>>
-      ((double*)dst, (const float*)src, n2);
-    break;
-  case 8: /* WIP */; break;
-  }
+  assert(4 == srcElemSize);
+  kernCopy<<<g_blocksPerKernel, g_threadsPerBlock>>>
+    ((double*)dst, (const float*)src, n2);
 }
 
 void cuAddId(void* elems, double alpha, int n, int elemSize) {
@@ -111,8 +109,6 @@ void cuAddId(void* elems, double alpha, int n, int elemSize) {
   }
 }
 
-// TODO: test manual gemm
-// TODO: test combined kernels
 double cuFroNorm(void* elems, bool subFromI, int n, int elemSize) {
   static double* buckets =
     (double*)cuMalloc(sizeof(double) * g_threadsPerKernel);
@@ -128,9 +124,10 @@ double cuFroNorm(void* elems, bool subFromI, int n, int elemSize) {
     break;
   }
 
-  const int nThreads = iMin(g_maxThreadsPerBlock, g_threadsPerKernel/4);
-  kernSweepSums<<<1, nThreads>>>(buckets, g_threadsPerKernel);
-  kernSweepSums<<<1, 1>>>(buckets, nThreads);
+  const int nSumThreads = iMin(g_maxThreadsPerBlock,
+                               g_threadsPerKernel / SUM_SWEEP_FACTOR);
+  kernSweepSums<<<1, nSumThreads>>>(buckets, g_threadsPerKernel);
+  kernSweepSums<<<1, 1>>>(buckets, nSumThreads);
 
   double froNorm2;
   cuDownload(&froNorm2, buckets, sizeof(double));
