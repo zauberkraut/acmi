@@ -38,7 +38,7 @@ static const char* DEFAULT_CONV_RATE_LIMIT_STR = "1";
 
 // for dealing with getopt arguments
 extern char *optarg;
-extern int optind, opterr, optopt;
+extern int optind, optopt;
 
 /* Parses an integer argument of the given radix from the command line, aborting
    after printing errMsg if an error occurs or the integer exceeds the given
@@ -147,7 +147,6 @@ int main(int argc, char* argv[]) {
     usage();
   }
 
-  opterr = 0;
   int opt;
   while ((opt = getopt(argc, argv, "fclo:q:p:e:t:m:b:RNDV:U:S:")) != -1) {
     switch (opt) {
@@ -216,19 +215,7 @@ int main(int argc, char* argv[]) {
       break;
 
     case '?':
-      switch (optopt) {
-      case 'o': case 'm': case 'e': case 'n': case 'O': case 'x':
-        fatal("option -%c missing argument", optopt);
-      }
-    default: { // report invalid option character
-      char cbuf[21];
-      if (isprint(optopt)) {
-        snprintf(cbuf, sizeof(cbuf), "%c", optopt);
-      } else {
-        snprintf(cbuf, sizeof(cbuf), "<0x%x>", optopt);
-      }
-      fatal("invalid option: -%s", cbuf);
-    }
+      exit(1);
     }
   }
 
