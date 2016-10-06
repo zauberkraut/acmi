@@ -5,11 +5,13 @@
 #include <time.h>
 #include "acmi.h"
 
+/* Quickly computes ||I - AR0|| for R0 = alpha*I. */
 static double traceErr(double alpha, Mat mA) {
   return sqrt(MatN(mA) + 1 - 2*alpha*MatTrace(mA));
 }
 
 static struct timespec g_startTime;
+/* Returns the number of milliseconds elapsed since g_startTime. */
 static int msSince() {
   struct timespec time;
   clock_gettime(CLOCK_MONOTONIC, &time);
@@ -17,16 +19,20 @@ static int msSince() {
     (time.tv_nsec - g_startTime.tv_nsec)/1.e6;
 }
 
+/* Swaps matrix pointers. */
 static void swap(Mat* mp, Mat* np) {
   Mat t = *mp;
   *mp = *np;
   *np = t;
 }
 
+/* The inversion algorithm.
+   If convRateLimit < 0, |convRateLimit| specifies a multiple of the first
+   measured rate to use as the limit. */
 double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
                     const double errLimit, const int msLimit,
                     double convRateLimit, bool safeR0) {
-  clock_gettime(CLOCK_MONOTONIC, &g_startTime);
+  clock_gettime(CLOCK_MONOTONIC, &g_startTime); // start clock
 
   debug("initializing work matrices...");
   const int matCount = convOrder < 4 ? 4 : 5;
@@ -48,11 +54,11 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
     err = traceErr(alpha, mA);
   }
 
-  for (int iter = 0; msSince() < msLimit; iter++) {
+  for (int iter = 0; msSince() < msLimit; iter++) { // while time remains
     static double prevErr = INFINITY;
 
     gemm(1, mA, mR, 0, mAR); // mAR <- AR
-    if (iter || safeR0) {
+    if (iter || safeR0) {    // already computed for fast R0
       err = froNorm(mAR, true);
     }
     // rate of convergence
@@ -66,8 +72,8 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
 
     // handle divergence
     if (!safeR0 && err >= prevErr && iter < 2) {
-      /* Our attempt to exploit the self-adjoint R0 = alpha*I failed. Use the
-         slower R0 = alpha*A*A^T starting point instead. */
+      /* Our attempt to exploit the self-adjoint, positive-definite R0 = alpha*I
+         failed. Start over using the slow, safe R0 = alpha^2 * A^T instead. */
       debug("diverged, retrying with alternate R0...");
       safeR0 = true;
       transpose(alpha*alpha, mA, mR);
@@ -77,17 +83,18 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
     } else if (MatElemSize(mA) < MAX_ELEM_SIZE && convRateLimit > 0 &&
                (convRate >= convRateLimit || err >= prevErr)) {
       debug("diverging, extending to double precision...");
-      if (MatDev(mA)) {
-        checkDevMemEnough(MatN(mA), 2 * MatElemSize(mA), matCount);
+      if (MatDev(mA)) { // quit if we don't have enough GPU memory for promotion
+        checkDevMemEnough(MatN(mA), 2*MatElemSize(mA), matCount);
       }
       MatPromote(mA); MatPromote(mR); MatPromote(mAR); MatPromote(mX);
       if (mY) {
         MatPromote(mY);
       }
+
       double tmp = prevErr;
       prevErr = INFINITY; // our 32-bit error might have been truncated
-      if (err >= tmp) { // TODO
-        swap(&mX, &mR); // back up R to its previous value
+      if (err >= tmp) {   // if we've fully diverged...
+        swap(&mX, &mR);   // ...back up R to its previous value
         iter -= 2;
         continue; // recompute AR
       }
@@ -95,22 +102,22 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
       warn("diverged, R%d is the best we can do", iter - 1);
       swap(&mX, &mR); // back up R to its previous value
       err = prevErr;
-      break;
+      break;          // quit
     } else {
-      if (iter == 1 && convRateLimit < 0) {
+      if (iter == 1 && convRateLimit < 0) { // set rate limit to initial value
         convRateLimit *= -convRate;
       }
       prevErr = err;
     }
 
-    switch (convOrder) {
-      case 2:
+    switch (convOrder) { // compute the next iteration
+      case 2: // quadratic convergence
         gemm(1, mR, mAR, 0, mX);  // mX  <- RAR
         geam(-1, mX, 2, mR, mAR); // mAR <- 2R - RAR = next R
         swap(&mR, &mAR);          // mR  <- next R, mAR <- previous R
         swap(&mX, &mAR);          // mX  <- previous R, mAR <- junk
         break;
-      case 3:
+      case 3: // cubic convergence
         gemm(1, mAR, mAR, 0, mX); // mX  <- (AR)^2
         geam(-3, mAR, 1, mX, mX); // mX  <- -3AR + (AR)^2
         addId(mX, 3);             // mX  <- 3I - 3AR + (AR)^2
@@ -118,7 +125,7 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
         swap(&mR, &mAR);          // mR  <- next R, mAR <- previous R
         swap(&mX, &mAR);          // mX  <- previous R
         break;
-      case 4:
+      case 4: // quartic convergence
         gemm(1, mAR, mAR, 0, mX); // mX <- (AR)^2
         geam(-4, mAR, 1, mX, mX); // mX <- -4AR + (AR)^2
         addId(mX, 6);             // mX <- 6I - 4AR + (AR)^2
@@ -136,11 +143,12 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
     warn("failed to converge to error < %g within %d ms", errLimit, msLimit);
   }
 
+  // cleanup
   MatFree(mAR);
   MatFree(mX);
   if (mY) {
     MatFree(mY);
   }
-  *mRp = mR;
+  *mRp = mR; // return inverted matrix
   return err;
 }

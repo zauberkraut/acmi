@@ -91,7 +91,6 @@ void cuShutDown();
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2);
 void cuAddId(void* elems, double alpha, int n, int elemSize);
 double cuFroNorm(void* elems, bool subFromI, int n, int elemSize);
-void cuHgeam(float alpha, void* a, float beta, void* b, void* c, int64_t n2);
 
 #ifdef __cplusplus
 } // end extern "C"

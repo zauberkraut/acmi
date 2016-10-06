@@ -23,8 +23,8 @@ static void testMatBasic(void** state) {
   assert_false(MatDev(m));
 
   MatClear(m);
-  for (int row = 0; row < n; row++) {
-    for (int col = 0; col < n; col++) {
+  for (int col = 0; col < n; col++) {
+    for (int row = 0; row < n; row++) {
       assert_true(0. == MatGet(m, row, col));
     }
   }
@@ -81,7 +81,7 @@ static void testMat64(void** state) {
 static void testMatNewRandSymm(void** state) {
   const int n = 1024;
 
-  Mat m = MatNewRand(n, 4, 16, true, false, true, false);
+  Mat m = MatNewRand(n, 4, 16, true, false, true, false, false);
 
   for (int row = 0; row < n; row++) {
     for (int col = row + 1; col < n; col++) {

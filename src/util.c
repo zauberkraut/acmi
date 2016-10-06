@@ -12,7 +12,9 @@
 #include "mmio.h"
 
 enum { MAT_PRINT_EXTENT = 8 };
-/* A matrix is sparse when its proportion of nonzero entries exceeds this. */
+
+/* A matrix is considered sparse when its proportion of nonzero entries exceeds
+   this. */
 static const double SPARSITY_THRESHOLD = 0.05;
 
 static void print(FILE* f, const char* s, va_list args) {
@@ -44,7 +46,7 @@ double mibibytes(size_t size) {
 }
 
 void checkDevMemEnough(int n, int elemSize, int matCount) {
-  const size_t totalSize = elemSize * n * n * matCount;
+  const size_t totalSize = elemSize*n*n*matCount;
   const size_t available = cuMemAvail();
   if (totalSize > available) {
     fatal("%ld bytes device memory needed; only %ld available", totalSize,
@@ -63,7 +65,6 @@ static int cstdRand16() {
 }
 
 /* Uses RDRAND instruction to generate high-quality random integers.
-   Intended for use in the creation of k-sorted sequences for a given k.
    Requires an Ivy Bridge or newer x86 CPU. Requires no seeding. */
 static int rdRand16() {
   int r = 0;
@@ -121,7 +122,7 @@ Mat MatLoad(const char* path, int elemSize, int matCount) {
       debug("...and is %ssymmetric", skew ? "skew-" : "");
     }
 
-    int64_t nNonzero = symmOrSkew ? 2 * nEntries - n : nEntries;
+    int64_t nNonzero = symmOrSkew ? 2*nEntries - n : nEntries;
     sparsity = (double)nNonzero/n2;
     debug("...and has %ld nonzero elements and sparsity %g", nNonzero,
           sparsity);
@@ -147,7 +148,7 @@ Mat MatLoad(const char* path, int elemSize, int matCount) {
       MatPut(m, row - 1, col - 1, elem);
 
       if (symmOrSkew && row != col) { // mirror symmetric element
-        MatPut(m, col - 1, row - 1, symmSign * elem);
+        MatPut(m, col - 1, row - 1, symmSign*elem);
       }
     }
   } else { // dense array encoding
@@ -160,7 +161,7 @@ Mat MatLoad(const char* path, int elemSize, int matCount) {
         MatPut(m, row, col, elem);
 
         if (symmOrSkew && row != col) {
-          MatPut(m, col, row, symmSign * elem);
+          MatPut(m, col, row, symmSign*elem);
         }
       }
     }
@@ -172,6 +173,7 @@ Mat MatLoad(const char* path, int elemSize, int matCount) {
   return m;
 }
 
+/* Draws off a bit from a random number and returns it as a sign. */
 static int drawSign(int* n) {
   int tmp = *n;
   *n >>= 1;
@@ -180,8 +182,9 @@ static int drawSign(int* n) {
 
 /* Generates a random, probably-invertible matrix of integers.
    Allowing negative entries shall probably cause ill-conditioning.
-   TODO: replace bool cascade with ORed flags
+   TODO: replace bool cascade with binary flags
    TODO: diagonal dominance adjustment of +1 might be swallowed for large values
+   TODO: populating elements in column-major order _might_ be faster
    TODO: 16-bit reals are choppy */
 Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
                bool neg, bool diagDom, bool useHardwareRNG) {
@@ -203,12 +206,12 @@ Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
     }
 
     for (; col < n; col++) {
-      if (!diagDom || row != col) { // diagonals are set below from the computed sum
+      if (!diagDom || row != col) { // dominant diagonals are summed later
         int r = rand16();
         double sign = neg ? drawSign(&r) : 1;
-        double absElem = real ? (double)r / rMax * maxElem :
+        double absElem = real ? (double)r/rMax * maxElem :
                                 (double)(r % maxElemEx);
-        double elem = sign * absElem;
+        double elem = sign*absElem;
         MatPut(m, row, col, elem);
         if (symm && row != col) { // mirror symmetric element
           MatPut(m, col, row, elem);
@@ -264,7 +267,7 @@ void MatPrint(Mat m) {
   assert(!MatDev(m));
 
   printf("%ld %d-bit elements; %ld bytes per column; trace = %g\n\n",
-         MatN2(m), 8 * MatElemSize(m), MatPitch(m), MatTrace(m));
+         MatN2(m), 8*MatElemSize(m), MatPitch(m), MatTrace(m));
   const int extent = iMin(MAT_PRINT_EXTENT, MatN(m));
 
   for (int row = 0; row < extent; row++) {

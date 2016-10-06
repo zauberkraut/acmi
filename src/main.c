@@ -2,7 +2,6 @@
 
    ACMI entry and setup. */
 
-// TODO: test manual gemm
 #include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
@@ -126,7 +125,7 @@ void usage() {
         "              (default: matrix dimension, max: %d)\n"
         "  -U <path>   Output generated, uninverted matrix to path\n"
         "  -S <hex>    Set PRNG seed (not yet portable)\n\n",
-        DEFAULT_CONV_ORDER_STR, 8 * DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT,
+        DEFAULT_CONV_ORDER_STR, 8*DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT,
         DEFAULT_CONV_RATE_LIMIT_STR, DEFAULT_MAX_BLOCKS_PER_KERNEL, MAX_BLOCKS_PER_KERNEL,
         MAX_RAND_ELEM);
   exit(0);
@@ -196,13 +195,14 @@ int main(int argc, char* argv[]) {
     case 'm':
       i = 1;
       d = MIN_CONV_RATE;
-      if (*optarg == 'x') {
+      if (*optarg == 'x') { // see usage()
         optarg++;
+        // negative value indicates initial rate multiple instead of fixed rate
         i = -1;
         d = MIN_CONV_RATE_FACTOR;
       }
-      convRateLimit = i * parseDouble(d, MAX_CONV_RATE + 1,
-                                      "invalid convergence rate limit");
+      convRateLimit = i*parseDouble(d, MAX_CONV_RATE + 1,
+                                    "invalid convergence rate limit");
       break;
     case 'b':
       maxBlocksPerKernel = parsePosInt(10, 1, MAX_BLOCKS_PER_KERNEL,
@@ -241,15 +241,15 @@ int main(int argc, char* argv[]) {
   }
 
   switch (optarg[0]) {
-    case '%':
-      randSymm = true;
-    case '@':
-      optarg++; // parse remainder of argument as the matrix dimension
-      randDim = parsePosInt(10, 2, MAX_MAT_DIM,
-                            "invalid random matrix dimension");
-      if (isnan(randMaxElem)) {
-        randMaxElem = randDim;
-      }
+  case '%':
+    randSymm = true;
+  case '@':
+    optarg++; // parse remainder of argument as the matrix dimension
+    randDim = parsePosInt(10, 2, MAX_MAT_DIM,
+                          "invalid random matrix dimension");
+    if (isnan(randMaxElem)) {
+      randMaxElem = randDim;
+    }
   }
 
   Mat mA = 0;
@@ -267,7 +267,7 @@ int main(int argc, char* argv[]) {
       srand(prngSeed);
     }
 
-    debug("generating %d-bit random %dx%d%s%s%s%s matrix...", 8 * elemSize,
+    debug("generating %d-bit random %dx%d%s%s%s%s matrix...", 8*elemSize,
           randDim, randDim, randSymm ? " symmetric" : "",
           randReal ? "" : " integer", randNeg ? "" : " nonnegative",
           randDiagDom ? "\n  diagonally-dominant" : "");
@@ -290,7 +290,7 @@ int main(int argc, char* argv[]) {
 
   const double matMiB = mibibytes(MatSize(mA));
   debug("%.3f MiB/matrix; allocating %.3f MiB total", matMiB,
-        matCount * matMiB);
+        matCount*matMiB);
 
   if (infoMode) {
     MatPrint(mA);
@@ -307,9 +307,9 @@ int main(int argc, char* argv[]) {
 
   const char* orderStr = "<error>";
   switch (convOrder) {
-    case 2: orderStr = "quadratic"; break;
-    case 3: orderStr = "cubic";     break;
-    case 4: orderStr = "quartic";   break;
+  case 2: orderStr = "quadratic"; break;
+  case 3: orderStr = "cubic";     break;
+  case 4: orderStr = "quartic";   break;
   }
   debug("inverting %s with %s convergence...",
         randDim ? "random matrix" : optarg, orderStr);
@@ -317,7 +317,7 @@ int main(int argc, char* argv[]) {
   Mat mR = 0;
   altmanInvert(mA, &mR, convOrder, errLimit, msLimit, convRateLimit, safeR0);
 
-  if (outPath) { // optionally write inverted matrix
+  if (outPath) {   // optionally write inverted matrix
     MatToHost(mR); // if inverse is on the GPU, download it
     MatWrite(mR, outPath);
     free(outPath);

@@ -6,9 +6,6 @@
 #include "acmi.h"
 #include "mmio.h"
 
-/* A matrix is sparse when its proportion of nonzero entries exceeds this. */
-static const double SPARSITY_THRESHOLD = 0.05;
-
 struct Mat_ {
   int n;        // square matrix dimension
   int64_t n2;   // n*n
@@ -23,16 +20,16 @@ struct Mat_ {
 static double ElemVal(union Elem* e, int size) {
   double val = INFINITY;
   switch (size) {
-  case 4:  val = e->fp32;               break;
-  case 8:  val = e->fp64;               break;
+  case 4:  val = e->fp32; break;
+  case 8:  val = e->fp64; break;
   }
   return val;
 }
 
 static void ElemSet(union Elem* e, int size, double val) {
   switch (size) {
-  case 4:  e->fp32 = val;                        break;
-  case 8:  e->fp64 = val;                        break;
+  case 4:  e->fp32 = val; break;
+  case 8:  e->fp64 = val; break;
   }
 }
 
@@ -43,8 +40,8 @@ static Mat MatEmptyNew(int n, int elemSize) {
   m->n = n;
   m->n2 = (int64_t)n*n;
   m->elemSize = elemSize;
-  m->size = m->n2 * m->elemSize;
-  m->pitch = n * m->elemSize;
+  m->size = m->n2*m->elemSize;
+  m->pitch = n*m->elemSize;
   m->trace = NAN;
   return m;
 }
@@ -105,7 +102,7 @@ void* MatCol(Mat m, int col) { return elemAddr(m, 0, col); }
 bool MatDev(Mat m) { return m->dev; }
 
 double MatTrace(Mat m) {
-  if (isnan(m->trace)) {
+  if (isnan(m->trace)) { // compute the trace
     assert(!MatDev(m));
     m->trace = 0.;
     for (int i = 0; i < MatN(m); i++) {
@@ -117,28 +114,26 @@ double MatTrace(Mat m) {
 
 /* Uploads a matrix' elements to device memory, freeing its host memory. */
 void MatToDev(Mat m) {
-  if (!m->dev) {
-    debug("uploading matrix to device");
-    void* hostElems = m->elems;
-    cuPin(hostElems, m->size);
-    MatNewElems(m, true);
-    cuUpload(m->elems, hostElems, m->size);
-    cuUnpin(hostElems);
-    free(hostElems);
-  }
+  assert(!m->dev);
+  debug("uploading matrix to device");
+  void* hostElems = m->elems;
+  cuPin(hostElems, m->size);
+  MatNewElems(m, true);
+  cuUpload(m->elems, hostElems, m->size);
+  cuUnpin(hostElems);
+  free(hostElems);
 }
 
 /* Downloads a matrix' elements to host memory, freeing its device memory. */
 void MatToHost(Mat m) {
-  if (m->dev) {
-    debug("downloading matrix from device");
-    void* devElems = m->elems;
-    MatNewElems(m, false);
-    cuPin(m->elems, m->size);
-    cuDownload(m->elems, devElems, m->size);
-    cuUnpin(m->elems);
-    cuFree(devElems);
-  }
+  assert(m->dev);
+  debug("downloading matrix from device");
+  void* devElems = m->elems;
+  MatNewElems(m, false);
+  cuPin(m->elems, m->size);
+  cuDownload(m->elems, devElems, m->size);
+  cuUnpin(m->elems);
+  cuFree(devElems);
 }
 
 /* Converts a 32-bit matrix to 64-bit. */
@@ -146,10 +141,11 @@ void MatPromote(Mat m) {
   assert(m->elemSize < MAX_ELEM_SIZE);
 
   struct Mat_ mOrig = *m;
-  m->elemSize <<= 1; // TODO: double double
+
+  m->elemSize <<= 1; // double size
   m->size     <<= 1;
   m->pitch    <<= 1;
-  MatNewElems(m, m->dev);
+  MatNewElems(m, m->dev); // reallocate storage
 
   if (m->dev) {
     cuPromote(m->elems, mOrig.elems, mOrig.elemSize, mOrig.n2);
@@ -157,12 +153,12 @@ void MatPromote(Mat m) {
     for (int64_t i = 0; i < mOrig.n2; i++) {
       switch (mOrig.elemSize) {
       case 4: ((double*)m->elems)[i] = ((float*)mOrig.elems)[i]; break;
-      case 8: fatal("WIP"); break;
+      case 8: fatal("quad-precision not yet supported");         break;
       }
     }
   }
 
-  MatFreeElems(&mOrig);
+  MatFreeElems(&mOrig); // free the old elements
 }
 
 /* Returns a matrix element. */

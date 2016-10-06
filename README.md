@@ -38,6 +38,9 @@ https://www.cise.ufl.edu/research/sparse/matrices/
 "The UF Sparse Matrix Collection"
 ).
 
+This project uses Matrix Market I/O routines from:  
+http://math.nist.gov/MatrixMarket/mmio-c.html
+
 ---
 
 TODO:
@@ -47,3 +50,5 @@ TODO:
   * Fix makefile quirks
   * Sprout CLI handler out of main() and handle conflicting options
   * Portable PRNG seeding
+  * Symmetric multiplication of symmetric matrices on the first iteration
+  * Double double support

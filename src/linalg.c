@@ -1,6 +1,7 @@
 /* linalg.c
  
-   ACMI linear algebraic operations implemented using (cu)BLAS and CUDA kernels. */
+   ACMI linear algebraic operations implemented using (cu)BLAS and CUDA kernels.
+*/
 
 #include <assert.h>
 #include <cublas_v2.h>
@@ -24,11 +25,11 @@ void gpuShutDown() {
   cuShutDown();
 }
 
-/* mT = alpha*mA^T */
+/* mT <- alpha*mA^T */
 void transpose(double alpha, Mat mA, Mat mT) {
   const int n = MatN(mA);
 
-  if (MatDev(mA)) {
+  if (MatDev(mA)) { // transpose on the GPU
     switch (MatElemSize(mA)) {
       union Elem a, beta;
 
@@ -45,7 +46,7 @@ void transpose(double alpha, Mat mA, Mat mT) {
                   n);
       break;
     }
-  } else { // perform host memory transpose
+  } else { // perform host memory transposition
     for (int row = 0; row < n; row++) {
       for (int col = row; col < n; col++) {
         if (row == col) {
@@ -61,7 +62,7 @@ void transpose(double alpha, Mat mA, Mat mT) {
   }
 }
 
-/* C = alpha*A*B + beta*C */
+/* C <- alpha*A*B + beta*C */
 void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
   assert (mA != mC && mB != mC);
   const int n = MatN(mA);
@@ -91,8 +92,8 @@ void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
   }
 }
 
-/* mB == mC => C = alpha*A + beta*C
-   otherwise   C = alpha*A + beta*B */
+/* mB = mC   => C <- alpha*A + beta*C
+   otherwise    C <- alpha*A + beta*B */
 void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
   assert(mA != mC);
   const int n = MatN(mA);
@@ -135,6 +136,7 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
   }
 }
 
+/* mA <- mA + alpha*I */
 void addId(Mat mA, double alpha) {
   if (MatDev(mA)) {
     cuAddId(MatElems(mA), alpha, MatN(mA), MatElemSize(mA));
@@ -155,8 +157,8 @@ double froNorm(Mat mA, bool subFromI) {
   } else { // software
     if (subFromI) { // horribly slow!
       double sum = 0;
-      for (int row = 0; row < MatN(mA); row++) {
-        for (int col = 0; col < MatN(mA); col++) {
+      for (int col = 0; col < MatN(mA); col++) {
+        for (int row = 0; row < MatN(mA); row++) {
           double e = (row == col) - MatGet(mA, row, col);
           sum += e*e;
         }
