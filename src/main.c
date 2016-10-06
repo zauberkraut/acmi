@@ -21,8 +21,9 @@ enum {
   MIN_CONV_ORDER = 2,
   MAX_CONV_ORDER = 4,
   DEFAULT_CONV_ORDER = 3,
-  DEFAULT_MS_LIMIT = 120000, // 2 minutes
+  DEFAULT_MS_LIMIT = 300000, // 5 minutes
   MAX_MS_LIMIT = 86400000,   // 1 day
+  MAX_RAND_ELEM = SHRT_MAX,
   MAX_BLOCKS_PER_KERNEL = (1 << 16) - 1,
   DEFAULT_MAX_BLOCKS_PER_KERNEL = 40
 };
@@ -54,9 +55,9 @@ int parsePosInt(int radix, unsigned min, unsigned max, const char* errMsg) {
   return i;
 }
 
-double parseFloat(double min, double maxEx, const char* errMsg) {
+double parseDouble(double min, double maxEx, const char* errMsg) {
   char* parsePtr;
-  double v = strtof(optarg, &parsePtr);
+  double v = strtod(optarg, &parsePtr);
   if (parsePtr - optarg != strlen(optarg) || v < min || v >= maxEx ||
       ERANGE == errno) {
     fatal(errMsg);
@@ -116,14 +117,17 @@ void usage() {
         "  -b <+int>   Set max blocks run by each GPU kernel\n"
         "              (default: %d, max: %d)\n"
         "Random matrix options:\n"
+        "  -H          Enable hardware random number generator (unseedable)\n"
         "  -R          Enable real elements\n"
         "  -N          Enable negative elements\n"
         "  -D          Generate dominant diagonal elements\n"
-        "  -V <+real>  Set max element magnitude (default: matrix dimension)\n"
+        "  -V <+real>  Set max element magnitude\n"
+        "              (default: matrix dimension, max: %d)\n"
         "  -U <path>   Output generated, uninverted matrix to path\n"
         "  -S <hex>    Set PRNG seed (not yet portable)\n\n",
         DEFAULT_CONV_ORDER_STR, 8 * DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT,
-        DEFAULT_CONV_RATE_LIMIT_STR, DEFAULT_MAX_BLOCKS_PER_KERNEL, MAX_BLOCKS_PER_KERNEL);
+        DEFAULT_CONV_RATE_LIMIT_STR, DEFAULT_MAX_BLOCKS_PER_KERNEL, MAX_BLOCKS_PER_KERNEL,
+        MAX_RAND_ELEM);
   exit(0);
 }
 
@@ -139,17 +143,18 @@ int main(int argc, char* argv[]) {
   double convRateLimit = DEFAULT_CONV_RATE_LIMIT;
   int maxBlocksPerKernel = DEFAULT_MAX_BLOCKS_PER_KERNEL;
   int randDim = 0;
-  bool randSymm = false, randReal = false, randNeg = false, randDiagDom = false;
+  bool randSymm = false, useHardwareRNG = false, randReal = false,
+       randNeg = false, randDiagDom = false;
   double randMaxElem = NAN;
   char* randOutPath = 0;
-  unsigned prngSeed = 0;
+  unsigned prngSeed = time(0);
 
   if (1 == argc) {
     usage();
   }
 
   int opt;
-  while ((opt = getopt(argc, argv, "fclo:q:p:e:t:m:b:RNDV:U:S:")) != -1) {
+  while ((opt = getopt(argc, argv, "fclo:q:p:e:t:m:b:HRNDV:U:S:")) != -1) {
     switch (opt) {
       int i;
       double d;
@@ -158,9 +163,10 @@ int main(int argc, char* argv[]) {
     case 'c': softMode = true; break;
     case 'l': safeR0 = true;   break;
 
-    case 'R': randReal = true;    break;
-    case 'N': randNeg = true;     break;
-    case 'D': randDiagDom = true; break;
+    case 'H': useHardwareRNG = true; break;
+    case 'R': randReal = true;       break;
+    case 'N': randNeg = true;        break;
+    case 'D': randDiagDom = true;    break;
 
     case 'o':
       checkWriteAccess(optarg);
@@ -180,8 +186,8 @@ int main(int argc, char* argv[]) {
       elemSize = i/8;
       break;
     case 'e':
-      errLimit = parseFloat(0, 1,
-                            "error limit must be a real on [0, 1)");
+      errLimit = parseDouble(0, 1,
+                             "error limit must be a real on [0, 1)");
       break;
     case 't':
       msLimit = parsePosInt(10, 0, MAX_MS_LIMIT, "invalid time limit in ms");
@@ -194,8 +200,8 @@ int main(int argc, char* argv[]) {
         i = -1;
         d = MIN_CONV_RATE_FACTOR;
       }
-      convRateLimit = i*parseFloat(d, MAX_CONV_RATE + 1,
-                                   "invalid convergence rate limit");
+      convRateLimit = i * parseDouble(d, MAX_CONV_RATE + 1,
+                                      "invalid convergence rate limit");
       break;
     case 'b':
       maxBlocksPerKernel = parsePosInt(10, 1, MAX_BLOCKS_PER_KERNEL,
@@ -203,8 +209,8 @@ int main(int argc, char* argv[]) {
       break;
 
     case 'V':
-      randMaxElem = parseFloat(0, (int64_t)INT_MAX + 1,
-                               "invalid max random element");
+      randMaxElem = parseDouble(0, nextafter(MAX_RAND_ELEM, INFINITY),
+                                "invalid max random element magnitude");
       break;
     case 'U':
       checkWriteAccess(optarg);
@@ -248,11 +254,12 @@ int main(int argc, char* argv[]) {
   Mat mA = 0;
 
   if (randDim) { // random mode
-    if (!prngSeed) { // if user supplied no seed, use time
-      prngSeed = time(0);
+    if (useHardwareRNG) {
+      debug("using RDRAND RNG");
+    } else {
+      debug("seeding PRNG with %x", prngSeed);
+      srand(prngSeed);
     }
-    debug("seeding PRNG with %x", prngSeed);
-    srand(prngSeed);
 
     debug("generating %d-bit random %dx%d%s%s%s%s matrix...", 8*elemSize,
           randDim, randDim, randSymm ? " symmetric" : "",
@@ -260,16 +267,16 @@ int main(int argc, char* argv[]) {
           randDiagDom ? "\n  diagonally-dominant" : "");
 
     mA = MatNewRand(randDim, elemSize, randMaxElem, randSymm, randReal,
-                    randNeg, randDiagDom);
+                    randNeg, randDiagDom, useHardwareRNG);
 
     if (randOutPath) { // optionally write randomly-generated matrix
       MatWrite(mA, randOutPath);
       free(randOutPath);
     }
   } else { // load matrix from given file
-    if (randSymm || randReal || randNeg || randDiagDom || !isnan(randMaxElem) ||
-        randOutPath || prngSeed) {
-      fatal("options -RNDVUS apply only to random matrices");
+    if (randSymm || useHardwareRNG || randReal || randNeg || randDiagDom ||
+        !isnan(randMaxElem) || randOutPath) {
+      fatal("options -HRNDVUS apply only to random matrices");
     }
     debug("loading %s", optarg);
     mA = MatLoad(optarg, elemSize);

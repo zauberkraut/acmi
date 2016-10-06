@@ -22,24 +22,22 @@ static inline int iMin(int a, int b) { return a < b ? a : b; }
 
 struct Mat_;
 typedef struct Mat_* Mat;
-struct Double2 { double hi, lo; };
 /* For generic handling of floating-point precisions. */
 union Elem {
-  uint16_t fp16;
   float fp32;
   double fp64;
-  struct Double2 fp64x2;
 };
 
 // util.c
-void setVerbose(bool b);
 void debug(const char* msg, ...);
 void warn(const char* msg, ...);
 void fatal(const char* msg, ...);
 double mibibytes(size_t size);
-bool f16cSupported();
-uint16_t singleToHalf(float f);
-float halfToSingle(uint16_t h);
+Mat MatLoad(const char* path, int elemSize);
+Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
+               bool neg, bool diagDom, bool useHardwareRNG);
+void MatWrite(Mat m, const char* path);
+void MatPrint(Mat m);
 
 // mat.c
 Mat MatNew(int n, int elemSize, bool dev);
@@ -60,11 +58,6 @@ void MatToHost(Mat m);
 void MatPromote(Mat m);
 double MatGet(Mat m, int row, int col);
 void MatPut(Mat m, int row, int col, double elem);
-Mat MatLoad(const char* path, int elemSize);
-void MatWrite(Mat m, const char* path);
-Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
-               bool neg, bool diagDom);
-void MatPrint(Mat m);
 double ElemVal(union Elem* e, int size);
 void ElemSet(union Elem* e, int size, double val);
 

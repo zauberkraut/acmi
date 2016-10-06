@@ -79,13 +79,13 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
       if (mY) {
         MatPromote(mY);
       }
-      if (false) { // TODO
-        swap(&mX, &mR); // back up R to its previous value
-        iter--;
-      }
+      double tmp = prevErr;
       prevErr = INFINITY; // our 32-bit error might have been truncated
-      //iter--; // TODO
-      //continue;
+      if (err >= tmp) { // TODO
+        swap(&mX, &mR); // back up R to its previous value
+        iter -= 2;
+        continue; // recompute AR
+      }
     } else if (err >= prevErr || !isfinite(err)) {
       warn("diverged, R%d is the best we can do", iter - 1);
       swap(&mX, &mR); // back up R to its previous value

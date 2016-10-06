@@ -3,11 +3,8 @@
    ACMI matrix type with functions. */
 
 #include <assert.h>
-#include <stdio.h>
 #include "acmi.h"
 #include "mmio.h"
-
-enum { MAT_PRINT_EXTENT = 8 };
 
 /* A matrix is sparse when its proportion of nonzero entries exceeds this. */
 static const double SPARSITY_THRESHOLD = 0.05;
@@ -26,20 +23,16 @@ struct Mat_ {
 double ElemVal(union Elem* e, int size) {
   double val = INFINITY;
   switch (size) {
-  case 2:  val = halfToSingle(e->fp16); break;
   case 4:  val = e->fp32;               break;
   case 8:  val = e->fp64;               break;
-  case 16: val = e->fp64x2.hi;          break; // TODO;
   }
   return val;
 }
 
 void ElemSet(union Elem* e, int size, double val) {
   switch (size) {
-  case 2:  e->fp16 = singleToHalf(val);          break;
   case 4:  e->fp32 = val;                        break;
   case 8:  e->fp64 = val;                        break;
-  case 16: e->fp64x2.hi = val; e->fp64x2.lo = 0; break;
   }
 }
 
@@ -110,7 +103,17 @@ size_t MatPitch(Mat m) { return m->pitch; }
 void* MatElems(Mat m) { return m->elems; }
 void* MatCol(Mat m, int col) { return elemAddr(m, 0, col); }
 bool MatDev(Mat m) { return m->dev; }
-double MatTrace(Mat m) { return m->trace; }
+
+double MatTrace(Mat m) {
+  if (isnan(m->trace)) {
+    assert(!MatDev(m));
+    m->trace = 0.;
+    for (int i = 0; i < MatN(m); i++) {
+      m->trace += MatGet(m, i, i);
+    }
+  }
+  return m->trace;
+}
 
 /* Uploads a matrix' elements to device memory, freeing its host memory. */
 void MatToDev(Mat m) {
@@ -178,199 +181,4 @@ void MatPut(Mat m, int row, int col, double elem) {
   ElemSet(&e, m->elemSize, elem);
   m->dev ? cuUpload(elemAddr(m, row, col), &e, m->elemSize)
          : memcpy(elemAddr(m, row, col), &e, m->elemSize);
-}
-
-/* Loads a matrix of the given precision from a file. */
-Mat MatLoad(const char* path, int elemSize) {
-  FILE* in = fopen(path, "r");
-  if (!in) {
-    fatal("couldn't open %s", path);
-  }
-
-  MM_typecode matCode;
-  if (mm_read_banner(in, &matCode)) {
-    fatal("couldn't read Matrix Market banner");
-  }
-  if (!mm_is_valid(matCode)) {
-    fatal("invalid matrix");
-  }
-  if (mm_is_complex(matCode) || mm_is_hermitian(matCode)) {
-    fatal("complex matrices not yet supported");
-  }
-
-  bool coord = mm_is_coordinate(matCode);
-  bool skew = mm_is_skew(matCode);
-  bool symmOrSkew = mm_is_symmetric(matCode) | skew;
-
-  int n, nCols, nEntries;
-  int err = coord ? mm_read_mtx_crd_size(in, &n, &nCols, &nEntries) :
-                    mm_read_mtx_array_size(in, &n, &nCols);
-  if (err) {
-    fatal("couldn't read matrix dimensions");
-  }
-  if (n != nCols || n < 2) {
-    fatal("matrix is %dx%d; only square matrices are invertible", n, nCols);
-  }
-  if (n > MAX_MAT_DIM) {
-    fatal("matrix exceeds maximum-allowed dimension of %d", MAX_MAT_DIM);
-  }
-
-  int64_t n2 = (int64_t)n*n;
-  size_t size = n2*elemSize;
-  debug("matrix is %dx%d and %.3f MiB in size", n, n, mibibytes(size));
-
-  double sparsity = INFINITY;
-  if (coord) {
-    if (symmOrSkew) {
-      debug("...and is %ssymmetric", skew ? "skew-" : "");
-    }
-
-    int64_t nNonzero = symmOrSkew ? 2*nEntries - n : nEntries;
-    sparsity = (double)nNonzero/n2;
-    debug("...and has %ld nonzero elements and sparsity %g", nNonzero,
-          sparsity);
-    if (sparsity < SPARSITY_THRESHOLD) {
-      debug("...and qualifies as sparse");
-    }
-  }
-
-  Mat m = MatNew(n, elemSize, false);
-  m->trace = 0; // we'll compute the trace, so clear the NaN
-  const int symmSign = skew ? -1 : 1;
-
-  if (coord) {
-    MatClear(m);
-    const char* parseStr = mm_is_pattern(matCode) ? "%d %d\n" : "%d %d %lf\n";
-    const int paramsPerElem = mm_is_pattern(matCode) ? 2 : 3;
-
-    for (int i = 0; i < nEntries; i++) {
-      int row, col;
-      double elem = 1;
-      if (fscanf(in, parseStr, &row, &col, &elem) != paramsPerElem) {
-        fatal("error reading element %d from %s", i + 1, path);
-      }
-      MatPut(m, row - 1, col - 1, elem);
-
-      if (symmOrSkew && row != col) { // mirror symmetric element
-        MatPut(m, col - 1, row - 1, symmSign*elem);
-      } else if (row == col) {
-        m->trace += elem;
-      }
-    }
-  } else { // dense array encoding
-    for (int col = 0; col < n; col++) {
-      int row = symmOrSkew ? col : 0;
-
-      for (; row < n; row++) {
-        double elem;
-        fscanf(in, "%lf\n", &elem);
-        MatPut(m, row, col, elem);
-
-        if (symmOrSkew && row != col) {
-          MatPut(m, col, row, symmSign*elem);
-        } else if (row == col) {
-          m->trace += elem;
-        }
-      }
-    }
-  }
-
-  fclose(in);
-
-  return m;
-}
-
-/* Writes a matrix out to a given path. */
-void MatWrite(Mat m, const char* path) {
-  if (m->dev) {
-    fatal("only host matrices may be written to disk");
-  }
-  FILE* out = fopen(path, "w");
-  if (!out) {
-    fatal("couldn't open %s to write random matrix", path);
-  }
-
-  MM_typecode matCode;
-  mm_initialize_typecode(&matCode);
-  mm_set_matrix(&matCode);
-  mm_set_real(&matCode);
-  mm_set_array(&matCode);
-  const int n = m->n;
-
-  debug("writing %.3f MiB %dx%d matrix in array format", mibibytes(MatSize(m)),
-        n, n);
-
-  mm_write_banner(out, matCode);
-  mm_write_mtx_array_size(out, n, n);
-  for (int col = 0; col < n; col++) {
-    for (int row = 0; row < n; row++) {
-      fprintf(out, "%g\n", MatGet(m, row, col));
-    }
-  }
-
-  fclose(out);
-}
-
-/* Generates a random, probably-invertible matrix of integers.
-   Allowing negative entries shall probably cause ill-conditioning. */
-Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
-               bool neg, bool diagDom) {
-  Mat m = MatNew(n, elemSize, false);
-  m->trace = 0;
-  int maxElemEx = floor(maxElem) + 1;
-
-  for (int row = 0; row < n; row++) {
-    int col = symm ? row : 0;
-    double rowSum = 0;
-    // if symmetric, sum the elements before this diagonal
-    for (int i = 0; i < col; i++) {
-      rowSum += MatGet(m, row, i);
-    }
-
-    for (; col < n; col++) {
-      if (!diagDom || row != col) { // diagonals are set below from the computed sum
-        double absElem = real ? (double)rand() / RAND_MAX * maxElem :
-                                (double)(rand() % maxElemEx);
-        double sign = neg ? (rand() % 2 ? 1 : -1) : 1;
-        double elem = sign * absElem;
-        MatPut(m, row, col, elem);
-        if (symm && row != col) { // mirror symmetric element
-          MatPut(m, col, row, elem);
-        }
-        rowSum += absElem;
-
-        if (row == col) {
-          m->trace += elem;
-        }
-      }
-    }
-
-    if (diagDom) {
-      double sign = neg ? (rand() % 2 ? 1 : -1) : 1;
-      // make diagonal strictly greater than the sum of the other row entries
-      double diag = sign * (real ? nextafter(rowSum, INFINITY) : rowSum + 1);
-      MatPut(m, row, row, diag);
-      m->trace += diag;
-    }
-  }
-
-  return m;
-}
-
-void MatPrint(Mat m) {
-  assert(!m->dev);
-
-  debug("%ld %d-bit elements; %ld bytes per column; trace = %g\n",
-        m->n2, 8 * m->elemSize, m->pitch, m->trace);
-  const int extent = iMin(MAT_PRINT_EXTENT, m->n);
-
-  for (int row = 0; row < extent; row++) {
-    for (int col = 0; col < extent; col++) {
-      printf("%12g ", MatGet(m, row, col));
-    }
-    if (extent < m->n) {
-      printf("...");
-    }
-    printf("\n");
-  }
 }
