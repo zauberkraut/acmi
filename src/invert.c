@@ -2,6 +2,7 @@
 
    ACMI convergent inversion algorithm implementation. */
 
+#include <time.h>
 #include "acmi.h"
 
 static double traceErr(double alpha, Mat mA) {
@@ -28,10 +29,11 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
   clock_gettime(CLOCK_MONOTONIC, &g_startTime);
 
   debug("initializing work matrices...");
+  const int matCount = convOrder < 4 ? 4 : 5;
   Mat mR = MatBuild(mA),
       mAR = MatBuild(mA),
       mX = MatBuild(mA),
-      mY = convOrder > 3 ? MatBuild(mA) : 0;
+      mY = matCount < 5 ? 0 : MatBuild(mA);
 
   const double alpha = 1/froNorm(mA, false);
   debug("computed alpha = %g", alpha);
@@ -75,6 +77,9 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
     } else if (MatElemSize(mA) < MAX_ELEM_SIZE && convRateLimit > 0 &&
                (convRate >= convRateLimit || err >= prevErr)) {
       debug("diverging, extending to double precision...");
+      if (MatDev(mA)) {
+        checkDevMemEnough(MatN(mA), 2 * MatElemSize(mA), matCount);
+      }
       MatPromote(mA); MatPromote(mR); MatPromote(mAR); MatPromote(mX);
       if (mY) {
         MatPromote(mY);

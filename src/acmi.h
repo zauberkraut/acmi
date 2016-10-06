@@ -10,7 +10,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,7 +32,8 @@ void debug(const char* msg, ...);
 void warn(const char* msg, ...);
 void fatal(const char* msg, ...);
 double mibibytes(size_t size);
-Mat MatLoad(const char* path, int elemSize);
+void checkDevMemEnough(int n, int elemSize, int matCount);
+Mat MatLoad(const char* path, int elemSize, int matCount);
 Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
                bool neg, bool diagDom, bool useHardwareRNG);
 void MatWrite(Mat m, const char* path);
@@ -58,8 +58,6 @@ void MatToHost(Mat m);
 void MatPromote(Mat m);
 double MatGet(Mat m, int row, int col);
 void MatPut(Mat m, int row, int col, double elem);
-double ElemVal(union Elem* e, int size);
-void ElemSet(union Elem* e, int size, double val);
 
 // invert.c
 double altmanInvert(const Mat mA, Mat *mRp, const int convOrder,

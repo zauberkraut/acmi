@@ -7,10 +7,7 @@
 #include <immintrin.h>
 #include <limits.h>
 #include <stdarg.h>
-#include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include "acmi.h"
 #include "mmio.h"
 
@@ -21,6 +18,7 @@ static const double SPARSITY_THRESHOLD = 0.05;
 static void print(FILE* f, const char* s, va_list args) {
   vfprintf(f, s, args);
   fprintf(f, "\n");
+  fflush(f);
   va_end(args);
 }
 
@@ -45,6 +43,15 @@ double mibibytes(size_t size) {
   return (double)size/(1 << 20);
 }
 
+void checkDevMemEnough(int n, int elemSize, int matCount) {
+  const size_t totalSize = elemSize * n * n * matCount;
+  const size_t available = cuMemAvail();
+  if (totalSize > available) {
+    fatal("%ld bytes device memory needed; only %ld available", totalSize,
+          available);
+  }
+}
+
 /* Tests for CPU support of the RDRAND instruction. */
 static bool rdRandSupported() {
   unsigned eax, ebx, ecx, edx;
@@ -67,7 +74,7 @@ static int rdRand16() {
 }
 
 /* Loads a matrix of the given precision from a file. */
-Mat MatLoad(const char* path, int elemSize) {
+Mat MatLoad(const char* path, int elemSize, int matCount) {
   FILE* in = fopen(path, "r");
   if (!in) {
     fatal("couldn't open %s", path);
@@ -99,6 +106,9 @@ Mat MatLoad(const char* path, int elemSize) {
   }
   if (n > MAX_MAT_DIM) {
     fatal("matrix exceeds maximum-allowed dimension of %d", MAX_MAT_DIM);
+  }
+  if (matCount) {
+    checkDevMemEnough(n, elemSize, matCount);
   }
 
   int64_t n2 = (int64_t)n*n;

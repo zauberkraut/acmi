@@ -3,13 +3,13 @@
    ACMI entry and setup. */
 
 // TODO: test manual gemm
-#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
 #include <libgen.h>
 #include <limits.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 #include "acmi.h"
 
@@ -45,7 +45,8 @@ extern int optind, optopt;
 /* Parses an integer argument of the given radix from the command line, aborting
    after printing errMsg if an error occurs or the integer exceeds the given
    bounds. */
-int parsePosInt(int radix, unsigned min, unsigned max, const char* errMsg) {
+static int parsePosInt(int radix, unsigned min, unsigned max,
+                       const char* errMsg) {
   char* parsePtr = 0;
   unsigned i = (unsigned)strtoll(optarg, &parsePtr, radix);
   if (parsePtr - optarg != strlen(optarg) || i < min || i > max ||
@@ -55,7 +56,7 @@ int parsePosInt(int radix, unsigned min, unsigned max, const char* errMsg) {
   return i;
 }
 
-double parseDouble(double min, double maxEx, const char* errMsg) {
+static double parseDouble(double min, double maxEx, const char* errMsg) {
   char* parsePtr;
   double v = strtod(optarg, &parsePtr);
   if (parsePtr - optarg != strlen(optarg) || v < min || v >= maxEx ||
@@ -66,7 +67,7 @@ double parseDouble(double min, double maxEx, const char* errMsg) {
 }
 
 /* Aborts if the given path can't be written to. */
-void checkWriteAccess(const char* path) {
+static void checkWriteAccess(const char* path) {
   const int len = strlen(path);
   if (len > MAX_PATH_LEN) {
     fatal("input file path exceeds %d characters", MAX_PATH_LEN);
@@ -252,8 +253,13 @@ int main(int argc, char* argv[]) {
   }
 
   Mat mA = 0;
+  const int matCount = convOrder < 4 ? 4 : 5;
 
   if (randDim) { // random mode
+    if (!softMode) {
+      checkDevMemEnough(randDim, elemSize, matCount);
+    }
+
     if (useHardwareRNG) {
       debug("using RDRAND RNG");
     } else {
@@ -261,7 +267,7 @@ int main(int argc, char* argv[]) {
       srand(prngSeed);
     }
 
-    debug("generating %d-bit random %dx%d%s%s%s%s matrix...", 8*elemSize,
+    debug("generating %d-bit random %dx%d%s%s%s%s matrix...", 8 * elemSize,
           randDim, randDim, randSymm ? " symmetric" : "",
           randReal ? "" : " integer", randNeg ? "" : " nonnegative",
           randDiagDom ? "\n  diagonally-dominant" : "");
@@ -279,11 +285,10 @@ int main(int argc, char* argv[]) {
       fatal("options -HRNDVUS apply only to random matrices");
     }
     debug("loading %s", optarg);
-    mA = MatLoad(optarg, elemSize);
+    mA = MatLoad(optarg, elemSize, softMode ? 0 : matCount);
   }
 
   const double matMiB = mibibytes(MatSize(mA));
-  const int matCount = convOrder < 4 ? 4 : 5;
   debug("%.3f MiB/matrix; allocating %.3f MiB total", matMiB,
         matCount * matMiB);
 

@@ -20,7 +20,7 @@ struct Mat_ {
   double trace; // the sum of the diagonal entries
 };
 
-double ElemVal(union Elem* e, int size) {
+static double ElemVal(union Elem* e, int size) {
   double val = INFINITY;
   switch (size) {
   case 4:  val = e->fp32;               break;
@@ -29,7 +29,7 @@ double ElemVal(union Elem* e, int size) {
   return val;
 }
 
-void ElemSet(union Elem* e, int size, double val) {
+static void ElemSet(union Elem* e, int size, double val) {
   switch (size) {
   case 4:  e->fp32 = val;                        break;
   case 8:  e->fp64 = val;                        break;
