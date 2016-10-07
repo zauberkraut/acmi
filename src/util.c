@@ -46,7 +46,7 @@ double mibibytes(size_t size) {
 }
 
 void checkDevMemEnough(int n, int elemSize, int matCount) {
-  const size_t totalSize = elemSize*n*n*matCount;
+  const size_t totalSize = (size_t)elemSize*n*n*matCount;
   const size_t available = cuMemAvail();
   if (totalSize > available) {
     fatal("%ld bytes device memory needed; only %ld available", totalSize,
@@ -61,16 +61,14 @@ static bool rdRandSupported() {
 }
 
 static int cstdRand16() {
-  return (int)((unsigned)rand() >> 15);
+  return (int)((unsigned)rand() >> 15); // discard correlated, low-order bits
 }
 
 /* Uses RDRAND instruction to generate high-quality random integers.
    Requires an Ivy Bridge or newer x86 CPU. Requires no seeding. */
 static int rdRand16() {
   int r = 0;
-  if (!_rdrand16_step((uint16_t*)&r)) {
-    fatal("RDRAND ran out of entropy; sourcing from rand()");
-  }
+  _rdrand16_step((uint16_t*)&r); // we assume we won't run out of entropy...
   return r;
 }
 

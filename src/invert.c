@@ -84,7 +84,7 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
                (convRate >= convRateLimit || err >= prevErr)) {
       debug("diverging, extending to double precision...");
       if (MatDev(mA)) { // quit if we don't have enough GPU memory for promotion
-        checkDevMemEnough(MatN(mA), 2*MatElemSize(mA), matCount);
+        checkDevMemEnough(MatN(mA), MatElemSize(mA), matCount);
       }
       MatPromote(mA); MatPromote(mR); MatPromote(mAR); MatPromote(mX);
       if (mY) {
