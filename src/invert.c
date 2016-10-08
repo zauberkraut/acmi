@@ -5,6 +5,8 @@
 #include <time.h>
 #include "acmi.h"
 
+enum { MAX_RESTART_ITER = 2 };
+
 /* Quickly computes ||I - AR0|| for R0 = alpha*I. */
 static double traceErr(double alpha, Mat mA) {
   return sqrt(MatN(mA) + 1 - 2*alpha*MatTrace(mA));
@@ -71,7 +73,7 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
     }
 
     // handle divergence
-    if (!safeR0 && err >= prevErr && iter < 2) {
+    if (!safeR0 && err >= prevErr && iter <= MAX_RESTART_ITER) {
       /* Our attempt to exploit the self-adjoint, positive-definite R0 = alpha*I
          failed. Start over using the slow, safe R0 = alpha^2 * A^T instead. */
       debug("diverged, retrying with alternate R0...");
