@@ -18,8 +18,8 @@ wflags = -Wall -Werror
 cflags = -std=c99 $(oflags) $(wflags) -I/usr/local/cuda/include \
          -D_POSIX_C_SOURCE=200809L -mrdrnd
 nvflags = -std c++11 $(oflags) -Xcompiler "$(wflags)"
-libs = -lm -llapacke -lopenblas -lpthread -L/usr/local/cuda/lib64 -lcudart \
-       -lcublas -lstdc++
+libs = -lm -lopenblas -lpthread -L/usr/local/cuda/lib64 -lcudart -lcublas \
+       -lstdc++
 
 $(bin): $(main) $(modules)
 	$(cc) -o $(@) $(^) $(libs)

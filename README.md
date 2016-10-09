@@ -12,7 +12,6 @@ Dependencies:
   * GCC
   * GNU Make
   * OpenBLAS
-  * LAPACKE
   * CMocka for unit tests
 
 ---

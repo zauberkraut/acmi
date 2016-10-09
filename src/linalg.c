@@ -6,7 +6,6 @@
 #include <assert.h>
 #include <cublas_v2.h>
 #include <openblas/cblas.h>
-#include <lapacke.h>
 #include "acmi.h"
 
 static cublasHandle_t g_cublasHandle = 0;
@@ -28,37 +27,29 @@ void gpuShutDown() {
 /* mT <- alpha*mA^T */
 void transpose(double alpha, Mat mA, Mat mT) {
   const int n = MatN(mA);
+  const void* const a = MatElems(mA);
+  void* const t = MatElems(mT);
+  const bool dev = MatDev(mA);
+  const double beta = 0;
 
-  if (MatDev(mA)) { // transpose on the GPU
-    switch (MatElemSize(mA)) {
-      union Elem a, beta;
-
-    case 4:
-      a.fp32 = alpha; beta.fp32 = 0;
-      cublasSgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &a.fp32,
-                  MatElems(mA), n, &beta.fp32, MatElems(mT), n, MatElems(mT),
-                  n);
-      break;
-    case 8:
-      beta.fp64 = 0;
+  switch (MatElemSize(mA)) {
+  case 4:
+    if (dev) {
+      float alpha32 = alpha;
+      cublasSgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &alpha32,
+                  a, n, (float*)&beta, t, n, t, n);
+    } else {
+      cblas_somatcopy(CblasColMajor, CblasTrans, n, n, alpha, a, n, t, n);
+    }
+    break;
+  case 8:
+    if (dev) {
       cublasDgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &alpha,
-                  MatElems(mA), n, &beta.fp64, MatElems(mT), n, MatElems(mT),
-                  n);
-      break;
+                  a, n, &beta, t, n, t, n);
+    } else {
+      cblas_domatcopy(CblasColMajor, CblasTrans, n, n, alpha, a, n, t, n);
     }
-  } else { // perform host memory transposition
-    for (int row = 0; row < n; row++) {
-      for (int col = row; col < n; col++) {
-        if (row == col) {
-          MatPut(mT, row, col, alpha*MatGet(mA, row, col));
-        } else {
-          double upper = alpha*MatGet(mA, row, col);
-          double lower = alpha*MatGet(mA, col, row);
-          MatPut(mT, row, col, lower);
-          MatPut(mT, col, row, upper);
-        }
-      }
-    }
+    break;
   }
 }
 
@@ -66,29 +57,32 @@ void transpose(double alpha, Mat mA, Mat mT) {
 void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
   assert (mA != mC && mB != mC);
   const int n = MatN(mA);
+  const void* const a = MatElems(mA);
+  const void* const b = MatElems(mB);
+  void* const c = MatElems(mC);
+  const bool dev = MatDev(mA);
 
-  if (MatDev(mA)) { // matrix elements reside in device memory
-    switch (MatElemSize(mA)) {
-      union Elem a, b;
-
-    case 4:
-      a.fp32 = alpha; b.fp32 = beta;
-      cublasSgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &a.fp32,
-                  MatElems(mA), n, MatElems(mB), n, &b.fp32, MatElems(mC), n);
-      break;
-    case 8:
-      cublasDgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
-                  MatElems(mA), n, MatElems(mB), n, &beta, MatElems(mC), n);
-      break;
-    }
-  } else { // matrix elements reside in host memory
-    if (8 == MatElemSize(mA)) {
-      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n, n, alpha,
-                  MatElems(mA), n, MatElems(mB), n, beta, MatElems(mC), n);
+  switch (MatElemSize(mA)) {
+  case 4:
+    if (dev) {
+      float alpha32 = alpha, beta32 = beta;
+      cublasSgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha32,
+                  a, n, b, n, &beta32, c, n);
     } else {
       cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n, n, alpha,
-                  MatElems(mA), n, MatElems(mB), n, beta, MatElems(mC), n);
+                  a, n, b, n, beta, c, n);
     }
+    break;
+
+  case 8:
+    if (dev) {
+      cublasDgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
+                  a, n, b, n, &beta, c, n);
+    } else {
+      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n, n, alpha,
+                  a, n, b, n, beta, c, n);
+    }
+    break;
   }
 }
 
@@ -97,42 +91,43 @@ void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
 void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
   assert(mA != mC);
   const int n = MatN(mA);
+  const int n2 = MatN2(mA);
+  const void* const a = MatElems(mA);
+  const void* const b = MatElems(mB);
+  void* const c = MatElems(mC);
+  const bool dev = MatDev(mA);
 
-  if (MatDev(mA)) {
-    switch (MatElemSize(mA)) {
-      union Elem a, b;
-
-    case 4:
-      a.fp32 = alpha; b.fp32 = beta;
-      cublasSgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &a.fp32,
-                  MatElems(mA), n, &b.fp32, MatElems(mB), n, MatElems(mC), n);
-      break;
-    case 8:
-      cublasDgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha,
-                  MatElems(mA), n, &beta, MatElems(mB), n, MatElems(mC), n);
-      break;
-    }
-  } else { // software
-    for (int col = 0; col < n; col++) {
-      if (mB == mC) {
-        if (8 == MatElemSize(mA)) {
-          cblas_dscal(n, beta, MatCol(mB, col), 1);
-          cblas_daxpy(n, alpha, MatCol(mA, col), 1, MatCol(mB, col), 1);
-        } else {
-          cblas_sscal(n, beta, MatCol(mB, col), 1);
-          cblas_saxpy(n, alpha, MatCol(mA, col), 1, MatCol(mB, col), 1);
-        }
+  switch (MatElemSize(mA)) {
+  case 4:
+    if (dev) {
+      float alpha32 = alpha, beta32 = beta;
+      cublasSgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha32,
+                  a, n, &beta32, b, n, c, n);
+    } else {
+      if (b == c) {
+        cblas_sscal(n2, beta, c, 1);
       } else {
-        memset(MatCol(mC, col), 0, MatPitch(mC));
-        if (8 == MatElemSize(mA)) {
-          cblas_daxpy(n, alpha, MatCol(mA, col), 1, MatCol(mC, col), 1);
-          cblas_daxpy(n, beta, MatCol(mB, col), 1, MatCol(mC, col), 1);
-        } else {
-          cblas_saxpy(n, alpha, MatCol(mA, col), 1, MatCol(mC, col), 1);
-          cblas_saxpy(n, beta, MatCol(mB, col), 1, MatCol(mC, col), 1);
-        }
+        memset(c, 0, MatSize(mC));
+        cblas_saxpy(n2, beta, b, 1, c, 1);
       }
+      cblas_saxpy(n2, alpha, a, 1, c, 1);
     }
+    break;
+
+  case 8:
+    if (dev) {
+      cublasDgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha,
+                  a, n, &beta, b, n, c, n);
+    } else {
+      if (b == c) {
+        cblas_dscal(n2, beta, c, 1);
+      } else {
+        memset(c, 0, MatSize(mC));
+        cblas_daxpy(n2, beta, b, 1, c, 1);
+      }
+      cblas_daxpy(n2, alpha, a, 1, c, 1);
+    }
+    break;
   }
 }
 
@@ -148,28 +143,38 @@ void addId(Mat mA, double alpha) {
 }
 
 /* Computes the Frobenius norm of a matrix. */
-double froNorm(Mat mA, bool subFromI) {
-  const int n = MatN(mA);
-  double froNorm;
+double nrm2(Mat mA) {
+  const int n2 = MatN2(mA);
+  const void* a = MatElems(mA);
+  const bool dev = MatDev(mA);
+  double norm;
 
-  if (MatDev(mA)) {
-    froNorm = cuFroNorm(MatElems(mA), subFromI, n, MatElemSize(mA));
-  } else { // software
-    if (subFromI) { // horribly slow!
-      double sum = 0;
-      for (int col = 0; col < MatN(mA); col++) {
-        for (int row = 0; row < MatN(mA); row++) {
-          double e = (row == col) - MatGet(mA, row, col);
-          sum += e*e;
-        }
-      }
-      froNorm = sqrt(sum);
+  switch (MatElemSize(mA)) {
+  case 4:
+    if (dev) {
+      float norm32;
+      cublasSnrm2(g_cublasHandle, n2, a, 1, (float*)&norm32);
+      norm = norm32;
     } else {
-      froNorm = 8 == MatElemSize(mA) ?
-        LAPACKE_dlange(LAPACK_COL_MAJOR, 'F', n, n, MatElems(mA), n) :
-        LAPACKE_slange(LAPACK_COL_MAJOR, 'F', n, n, MatElems(mA), n);
+      norm = cblas_snrm2(n2, a, 1);
     }
+    break;
+
+  case 8:
+    if (dev) {
+      cublasDnrm2(g_cublasHandle, n2, a, 1, (double*)&norm);
+    } else {
+      norm = cblas_dnrm2(n2, a, 1);
+    }
+    break;
   }
 
-  return froNorm;
+  return norm;
+}
+
+double minusIdNrm2(Mat mA) {
+  addId(mA, -1);
+  double norm = nrm2(mA);
+  addId(mA, 1);
+  return norm;
 }

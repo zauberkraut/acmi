@@ -19,7 +19,6 @@ static void testMatBasic(void** state) {
   assert_int_equal(MatSize(m), n*n*4);
   assert_int_equal(MatPitch(m), n*4);
   assert_non_null(MatElems(m));
-  assert_ptr_equal(MatCol(m, 1), MatElems(m) + n*4);
   assert_false(MatDev(m));
 
   MatClear(m);
@@ -60,7 +59,6 @@ static void testMat64(void** state) {
   assert_int_equal(MatSize(m), n*n*8);
   assert_int_equal(MatPitch(m), n*8);
   assert_non_null(MatElems(m));
-  assert_ptr_equal(MatCol(m, 1), MatElems(m) + n*8);
   assert_false(MatDev(m));
 
   MatPut(m, 0, 0, 1);

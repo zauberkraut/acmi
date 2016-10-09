@@ -50,7 +50,6 @@ int MatElemSize(Mat m);
 size_t MatSize(Mat m);
 size_t MatPitch(Mat m);
 void* MatElems(Mat m);
-void* MatCol(Mat m, int col);
 bool MatDev(Mat m);
 double MatTrace(Mat m);
 void MatToDev(Mat m);
@@ -71,7 +70,8 @@ void transpose(double alpha, Mat mA, Mat mT);
 void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC);
 void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC);
 void addId(Mat mA, double alpha);
-double froNorm(Mat mA, bool subFromI);
+double nrm2(Mat mA);
+double minusIdNrm2(Mat mA);
 
 // util.cu
 size_t cuMemAvail();
@@ -90,7 +90,6 @@ void cuSetUp(const int maxBlocksPerKernel, const int n);
 void cuShutDown();
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2);
 void cuAddId(void* elems, double alpha, int n, int elemSize);
-double cuFroNorm(void* elems, bool subFromI, int n, int elemSize);
 
 #ifdef __cplusplus
 } // end extern "C"

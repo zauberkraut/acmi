@@ -17,7 +17,7 @@ struct Mat_ {
   double trace; // the sum of the diagonal entries
 };
 
-static double ElemVal(union Elem* e, int size) {
+static inline double ElemVal(union Elem* e, int size) {
   double val = INFINITY;
   switch (size) {
   case 4:  val = e->fp32; break;
@@ -26,7 +26,7 @@ static double ElemVal(union Elem* e, int size) {
   return val;
 }
 
-static void ElemSet(union Elem* e, int size, double val) {
+static inline void ElemSet(union Elem* e, int size, double val) {
   switch (size) {
   case 4:  e->fp32 = val; break;
   case 8:  e->fp64 = val; break;
@@ -92,14 +92,13 @@ static inline void* elemAddr(Mat m, int row, int col) {
 }
 
 // getters
-int MatN(Mat m) { return m->n; }
-int64_t MatN2(Mat m) { return m->n2; }
-int MatElemSize(Mat m) { return m->elemSize; }
-size_t MatSize(Mat m) { return m->size; }
-size_t MatPitch(Mat m) { return m->pitch; }
-void* MatElems(Mat m) { return m->elems; }
-void* MatCol(Mat m, int col) { return elemAddr(m, 0, col); }
-bool MatDev(Mat m) { return m->dev; }
+inline int MatN(Mat m) { return m->n; }
+inline int64_t MatN2(Mat m) { return m->n2; }
+inline int MatElemSize(Mat m) { return m->elemSize; }
+inline size_t MatSize(Mat m) { return m->size; }
+inline size_t MatPitch(Mat m) { return m->pitch; }
+inline void* MatElems(Mat m) { return m->elems; }
+inline bool MatDev(Mat m) { return m->dev; }
 
 double MatTrace(Mat m) {
   if (isnan(m->trace)) { // compute the trace

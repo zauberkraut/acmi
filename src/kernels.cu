@@ -40,41 +40,6 @@ kernAddId(T* a, const T alpha, const int n) {
   }
 }
 
-/* Sums the squares of the elements in a, first subtracting the matrix from I if
-   subFromI is set. Each thread computes a partial sum and stores it in its own
-   bucket. */
-template<typename T, typename U> __global__ void
-kernSweepSquares(const T* const a, U* const buckets, const bool subFromI,
-                 const int n) {
-  const int offset = blockIdx.x*blockDim.x + threadIdx.x;
-  const int stride = gridDim.x*blockDim.x;
-  const int64_t n2 = n*n;
-
-  U sum = 0.;
-
-  for (int64_t i = offset; i < n2; i += stride) {
-    bool diag = subFromI && i % n == i / n;
-    U e = diag - a[i];
-    sum += e*e;
-  }
-
-  buckets[offset] = sum;
-}
-
-/* Combines the sums of the buckets used above. */
-template<typename T> __global__ void
-kernSweepSums(T* const buckets, const int bucketsLen) {
-  const int offset = blockIdx.x*blockDim.x + threadIdx.x;
-  const int stride = gridDim.x*blockDim.x;
-
-  T sumsum = 0.;
-  for (int i = offset; i < bucketsLen; i += stride) {
-    sumsum += buckets[i];
-  }
-
-  buckets[offset] = sumsum;
-}
-
 } // end anonymous namespace
 
 extern "C" {
@@ -117,35 +82,6 @@ void cuAddId(void* elems, double alpha, int n, int elemSize) {
   case 4: kernAddId<<<1, nThreads>>>((float*)elems, (float)alpha, n); break;
   case 8: kernAddId<<<1, nThreads>>>((double*)elems, alpha, n);       break;
   }
-}
-
-/* Computes the Frobenius norm of the matrix backed by elems, first subtracting
-   the matrix from I if subFromI is set. */
-double cuFroNorm(void* elems, bool subFromI, int n, int elemSize) {
-  static double* buckets = // partial sums, one for each thread
-    (double*)cuMalloc(sizeof(double)*g_threadsPerKernel);
-
-  switch (elemSize) {
-  case 4:
-    kernSweepSquares<<<g_blocksPerKernel, g_threadsPerBlock>>>
-      ((float*)elems, buckets, subFromI, n);
-    break;
-  case 8:
-    kernSweepSquares<<<g_blocksPerKernel, g_threadsPerBlock>>>
-      ((double*)elems, buckets, subFromI, n);
-    break;
-  }
-
-  /* We collect the partial sums using fewer threads and just one block since
-     RAM and kernel latencies dominate here. */
-  const int nSumThreads = iMin(g_maxThreadsPerBlock,
-                               g_threadsPerKernel / SUM_SWEEP_FACTOR);
-  kernSweepSums<<<1, nSumThreads>>>(buckets, g_threadsPerKernel);
-  kernSweepSums<<<1, 1>>>(buckets, nSumThreads);
-
-  double froNorm2;
-  cuDownload(&froNorm2, buckets, sizeof(double));
-  return sqrt(froNorm2);
 }
 
 } // end extern "C"
