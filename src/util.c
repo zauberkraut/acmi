@@ -40,7 +40,9 @@ void fatal(const char* s, ...) {
   abort();
 }
 
-double mibibytes(size_t size) {
+inline int iMin(int a, int b) { return a < b ? a : b; }
+
+inline double mibibytes(size_t size) {
   return (double)size/(1 << 20);
 }
 

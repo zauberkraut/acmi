@@ -9,9 +9,9 @@ namespace {
 enum { SUM_SWEEP_FACTOR = 4 };
 
 /* Kernel parameters. */
-int g_maxBlocksPerGrid, g_maxThreadsPerBlock,
-    g_blocksPerKernel,  g_threadsPerBlock,
-    g_threadsPerKernel;
+int g_maxThreadsPerBlock,
+    g_blocksPerVector, g_threadsPerVectorBlock, g_threadsPerVector,
+    g_blocksPerMatrix, g_threadsPerMatrixBlock, g_threadsPerMatrix;
 
 /* Copies elements from one nxn matrix to another, converting them to the
    precision of the destination matrix. */
@@ -48,19 +48,30 @@ void cuSetUp(const int maxBlocksPerKernel, const int n) {
   cudaDeviceProp prop;
   cudaGetDeviceProperties(&prop, 0); // assumes usage of the first device
   debug("setting up kernels on %s", prop.name);
-  g_maxBlocksPerGrid = prop.maxGridSize[0];
+  int maxBlocksPerGrid = prop.maxGridSize[0];
+  if (maxBlocksPerKernel > maxBlocksPerGrid) {
+    fatal("max blocks supported: %d", maxBlocksPerGrid);
+  }
   g_maxThreadsPerBlock = prop.maxThreadsPerBlock;
+
   const int64_t n2 = n*n;
-  g_blocksPerKernel = (n2 + g_maxThreadsPerBlock - 1) / g_maxThreadsPerBlock;
-  g_blocksPerKernel = iMin(maxBlocksPerKernel, g_blocksPerKernel);
-  g_threadsPerBlock = iMin(g_maxThreadsPerBlock, n2);
-  g_threadsPerKernel = g_threadsPerBlock*g_blocksPerKernel;
-  debug("max  blocks/grid  : %d\n"
+  g_blocksPerVector = (n  + g_maxThreadsPerBlock - 1) / g_maxThreadsPerBlock;
+  g_blocksPerVector = iMin(maxBlocksPerKernel, g_blocksPerVector);
+  g_blocksPerMatrix = (n2 + g_maxThreadsPerBlock - 1) / g_maxThreadsPerBlock;
+  g_blocksPerMatrix = iMin(maxBlocksPerKernel, g_blocksPerMatrix);
+  g_threadsPerVectorBlock = iMin(g_maxThreadsPerBlock, n);
+  g_threadsPerMatrixBlock = iMin(g_maxThreadsPerBlock, n2);
+  g_threadsPerVector = g_blocksPerVector * g_threadsPerVectorBlock;
+  g_threadsPerMatrix = g_blocksPerMatrix * g_threadsPerMatrixBlock;
+
+  debug("max  blocks/kernel: %d\n"
         "max threads/block : %d\n"
-        "     blocks/kernel: %d\n"
-        "    threads/block : %d\n"
-        "    threads/kernel: %d", g_maxBlocksPerGrid, g_maxThreadsPerBlock,
-        g_blocksPerKernel, g_threadsPerBlock, g_threadsPerKernel);
+        "     blocks/vector: %d\n"
+        "     blocks/matrix: %d\n"
+        "    threads/vector: %d\n"
+        "    threads/matrix: %d", maxBlocksPerKernel, g_maxThreadsPerBlock,
+        g_blocksPerVector, g_blocksPerMatrix,
+        g_threadsPerVector, g_threadsPerMatrix);
 }
 
 void cuShutDown() {
@@ -69,16 +80,21 @@ void cuShutDown() {
 
 /* Doubles matrix precision. */
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2) {
-  kernCopy<<<g_blocksPerKernel, g_threadsPerBlock>>>
+  kernCopy<<<g_blocksPerMatrix, g_threadsPerMatrixBlock>>>
     ((double*)dst, (const float*)src, n2);
 }
 
 /* Adds alpha*I to the nxn matrix backed by the device array elems. */
 void cuAddId(void* elems, double alpha, int n, int elemSize) {
-  const int nThreads = iMin(g_maxThreadsPerBlock, n);
   switch (elemSize) {
-  case 4: kernAddId<<<1, nThreads>>>((float*)elems, (float)alpha, n); break;
-  case 8: kernAddId<<<1, nThreads>>>((double*)elems, alpha, n);       break;
+  case 4:
+    kernAddId<<<g_blocksPerVector, g_threadsPerVectorBlock>>>
+      ((float*)elems, (float)alpha, n);
+    break;
+  case 8:
+    kernAddId<<<g_blocksPerVector, g_threadsPerVectorBlock>>>
+      ((double*)elems, alpha, n);
+    break;
   }
 }
 

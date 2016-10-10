@@ -17,8 +17,6 @@ extern "C" {
 
 enum { MAX_MAT_DIM = 32768, MAX_ELEM_SIZE = 8 };
 
-static inline int iMin(int a, int b) { return a < b ? a : b; }
-
 struct Mat_;
 typedef struct Mat_* Mat;
 /* For generic handling of floating-point precisions. */
@@ -31,6 +29,7 @@ union Elem {
 void debug(const char* msg, ...);
 void warn(const char* msg, ...);
 void fatal(const char* msg, ...);
+int iMin(int a, int b);
 double mibibytes(size_t size);
 void checkDevMemEnough(int n, int elemSize, int matCount);
 Mat MatLoad(const char* path, int elemSize, int matCount);
