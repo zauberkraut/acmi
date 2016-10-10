@@ -2,7 +2,6 @@
 
    ACMI matrix type with functions. */
 
-#include <assert.h>
 #include "acmi.h"
 #include "mmio.h"
 
@@ -66,15 +65,12 @@ Mat MatBuild(Mat m) {
 
 /* Frees a matrix' elements, but not the matrix struct itself. */
 static void MatFreeElems(Mat m) {
-  assert(m->elems);
   m->dev ? cuFree(m->elems) : free(m->elems);
   m->elems = 0;
 }
 
 /* Frees a matrix as well as its elements. */
 void MatFree(Mat m) {
-  assert(m);
-
   MatFreeElems(m);
   memset(m, 0, sizeof(struct Mat_));
   free(m);
@@ -102,7 +98,6 @@ inline bool MatDev(Mat m) { return m->dev; }
 
 double MatTrace(Mat m) {
   if (isnan(m->trace)) { // compute the trace
-    assert(!MatDev(m));
     m->trace = 0.;
     for (int i = 0; i < MatN(m); i++) {
       m->trace += MatGet(m, i, i);
@@ -113,7 +108,6 @@ double MatTrace(Mat m) {
 
 /* Uploads a matrix' elements to device memory, freeing its host memory. */
 void MatToDev(Mat m) {
-  assert(!m->dev);
   debug("uploading matrix to device");
   void* hostElems = m->elems;
   cuPin(hostElems, m->size);
@@ -125,7 +119,6 @@ void MatToDev(Mat m) {
 
 /* Downloads a matrix' elements to host memory, freeing its device memory. */
 void MatToHost(Mat m) {
-  assert(m->dev);
   debug("downloading matrix from device");
   void* devElems = m->elems;
   MatNewElems(m, false);
@@ -137,8 +130,6 @@ void MatToHost(Mat m) {
 
 /* Converts a 32-bit matrix to 64-bit. */
 void MatPromote(Mat m) {
-  assert(m->elemSize < MAX_ELEM_SIZE);
-
   struct Mat_ mOrig = *m;
 
   m->elemSize <<= 1; // double size
@@ -162,7 +153,6 @@ void MatPromote(Mat m) {
 
 /* Returns a matrix element. */
 double MatGet(Mat m, int row, int col) {
-  assert(!m->dev && row >= 0 && row < m->n && col >= 0 && col < m->n);
   union Elem e;
   m->dev ? cuDownload(&e, elemAddr(m, row, col), m->elemSize)
          : memcpy(&e, elemAddr(m, row, col), m->elemSize);
@@ -171,7 +161,6 @@ double MatGet(Mat m, int row, int col) {
 
 /* Sets a matrix element. */
 void MatPut(Mat m, int row, int col, double elem) {
-  assert(!m->dev && row >= 0 && row < m->n && col >= 0 && col < m->n);
   union Elem e;
   ElemSet(&e, m->elemSize, elem);
   m->dev ? cuUpload(elemAddr(m, row, col), &e, m->elemSize)

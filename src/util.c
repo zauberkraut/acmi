@@ -2,7 +2,6 @@
 
    ACMI utility functions. */
 
-#include <assert.h>
 #include <cpuid.h>
 #include <immintrin.h>
 #include <limits.h>
@@ -262,8 +261,6 @@ void MatWrite(Mat m, const char* path) {
 }
 
 void MatPrint(Mat m) {
-  assert(!MatDev(m));
-
   printf("%ld %d-bit elements; %ld bytes per column; trace = %g\n\n",
          MatN2(m), 8*MatElemSize(m), MatPitch(m), MatTrace(m));
   const int extent = iMin(MAT_PRINT_EXTENT, MatN(m));

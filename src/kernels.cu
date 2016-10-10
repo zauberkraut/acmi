@@ -2,7 +2,6 @@
 
    Custom ACMI CUDA kernels. */
 
-#include <cassert>
 #include "acmi.h"
 
 namespace {
@@ -70,7 +69,6 @@ void cuShutDown() {
 
 /* Doubles matrix precision. */
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2) {
-  assert(4 == srcElemSize);
   kernCopy<<<g_blocksPerKernel, g_threadsPerBlock>>>
     ((double*)dst, (const float*)src, n2);
 }

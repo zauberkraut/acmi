@@ -3,7 +3,6 @@
    ACMI linear algebraic operations implemented using (cu)BLAS and CUDA kernels.
 */
 
-#include <assert.h>
 #include <cublas_v2.h>
 #include <openblas/cblas.h>
 #include "acmi.h"
@@ -55,7 +54,6 @@ void transpose(double alpha, Mat mA, Mat mT) {
 
 /* C <- alpha*A*B + beta*C */
 void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
-  assert (mA != mC && mB != mC);
   const int n = MatN(mA);
   const void* const a = MatElems(mA);
   const void* const b = MatElems(mB);
@@ -89,7 +87,6 @@ void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
 /* mB = mC   => C <- alpha*A + beta*C
    otherwise    C <- alpha*A + beta*B */
 void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
-  assert(mA != mC);
   const int n = MatN(mA);
   const int n2 = MatN2(mA);
   const void* const a = MatElems(mA);
