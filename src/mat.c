@@ -151,18 +151,16 @@ void MatPromote(Mat m) {
   MatFreeElems(&mOrig); // free the old elements
 }
 
-/* Returns a matrix element. */
-double MatGet(Mat m, int row, int col) {
+/* Returns a matrix element; ONLY for host matrices. */
+inline double MatGet(Mat m, int row, int col) {
   union Elem e;
-  m->dev ? cuDownload(&e, elemAddr(m, row, col), m->elemSize)
-         : memcpy(&e, elemAddr(m, row, col), m->elemSize);
+  memcpy(&e, elemAddr(m, row, col), m->elemSize);
   return ElemVal(&e, m->elemSize);
 }
 
-/* Sets a matrix element. */
-void MatPut(Mat m, int row, int col, double elem) {
+/* Sets a matrix element; ONLY for host matrices. */
+inline void MatPut(Mat m, int row, int col, double elem) {
   union Elem e;
   ElemSet(&e, m->elemSize, elem);
-  m->dev ? cuUpload(elemAddr(m, row, col), &e, m->elemSize)
-         : memcpy(elemAddr(m, row, col), &e, m->elemSize);
+  memcpy(elemAddr(m, row, col), &e, m->elemSize);
 }

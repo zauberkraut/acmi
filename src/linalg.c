@@ -7,7 +7,7 @@
 #include <openblas/cblas.h>
 #include "acmi.h"
 
-static cublasHandle_t g_cublasHandle = 0;
+static cublasHandle_t g_cublasHandle;
 
 void gpuSetUp(const int maxBlocksPerKernel, const int n) {
   debug("setting up cuBLAS");
@@ -129,13 +129,13 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
 }
 
 /* mA <- mA + alpha*I */
-void addId(Mat mA, double alpha) {
+void addId(double alpha, Mat mA) {
   if (MatDev(mA)) {
-    cuAddId(MatElems(mA), alpha, MatN(mA), MatElemSize(mA));
-  } else {
-    for (int diag = 0; diag < MatN(mA); diag++) {
-      MatPut(mA, diag, diag, alpha + MatGet(mA, diag, diag));
-    }
+    cuAddId(alpha, MatElems(mA), MatN(mA), MatElemSize(mA));
+  } else for (int diag = 0; diag < MatN(mA); diag++) {
+    /* This could be marginally sped up using *axpy with a 1xn vector of ones
+       and a stride of n + 1 over the matrix, but it's not worth the trouble. */
+    MatPut(mA, diag, diag, alpha + MatGet(mA, diag, diag));
   }
 }
 
@@ -170,8 +170,8 @@ double nrm2(Mat mA) {
 }
 
 double minusIdNrm2(Mat mA) {
-  addId(mA, -1);
+  addId(-1, mA);
   double norm = nrm2(mA);
-  addId(mA, 1);
+  addId(1, mA);
   return norm;
 }

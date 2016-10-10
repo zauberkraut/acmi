@@ -68,11 +68,13 @@ void gpuShutDown();
 void transpose(double alpha, Mat mA, Mat mT);
 void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC);
 void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC);
-void addId(Mat mA, double alpha);
+void addId(double alpha, Mat mA);
 double nrm2(Mat mA);
 double minusIdNrm2(Mat mA);
 
 // util.cu
+#define CUCHECK cuCheck(__FILE__, __LINE__)
+void cuCheck(const char* fname, const size_t lnum);
 size_t cuMemAvail();
 void* cuMalloc(size_t size);
 void cuFree(void* p);
@@ -83,12 +85,10 @@ void cuPin(void* p, size_t size);
 void cuUnpin(void* p);
 
 // kernels.cu
-#define CUCHECK cuCheck(__FILE__, __LINE__)
-void cuCheck(const char* fname, const size_t lnum);
 void cuSetUp(const int maxBlocksPerKernel, const int n);
 void cuShutDown();
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2);
-void cuAddId(void* elems, double alpha, int n, int elemSize);
+void cuAddId(double alpha, void* elems, int n, int elemSize);
 
 #ifdef __cplusplus
 } // end extern "C"
