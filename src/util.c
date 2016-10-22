@@ -168,7 +168,6 @@ Mat MatLoad(const char* path, int elemSize, int matCount) {
 
   fclose(in);
 
-  MatTrace(m); // compute trace
   return m;
 }
 
@@ -227,7 +226,6 @@ Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
     }
   }
 
-  MatTrace(m); // compute trace
   return m;
 }
 
@@ -264,7 +262,7 @@ void MatWrite(Mat m, const char* path) {
 
 void MatPrint(Mat m) {
   printf("%ld %d-bit elements; %ld bytes per column; trace = %g\n\n",
-         MatN2(m), 8*MatElemSize(m), MatPitch(m), MatTrace(m));
+         MatN2(m), 8*MatElemSize(m), MatPitch(m), trace(m));
   const int extent = iMin(MAT_PRINT_EXTENT, MatN(m));
 
   for (int row = 0; row < extent; row++) {

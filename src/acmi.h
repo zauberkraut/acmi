@@ -50,7 +50,6 @@ size_t MatSize(Mat m);
 size_t MatPitch(Mat m);
 void* MatElems(Mat m);
 bool MatDev(Mat m);
-double MatTrace(Mat m);
 void MatToDev(Mat m);
 void MatToHost(Mat m);
 void MatPromote(Mat m);
@@ -58,7 +57,7 @@ double MatGet(Mat m, int row, int col);
 void MatPut(Mat m, int row, int col, double elem);
 
 // invert.c
-double altmanInvert(const Mat mA, Mat *mRp, const int convOrder,
+double altmanInvert(const Mat mA, Mat* const mRp, const int convOrder,
                     const double errLimit, const int msLimit,
                     double convRateLimit, bool safeR0);
 
@@ -70,6 +69,7 @@ void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC);
 void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC);
 void addId(double alpha, Mat mA);
 double nrm2(Mat mA);
+double trace(Mat mA);
 double minusIdNrm2(Mat mA);
 
 // util.cu
@@ -89,6 +89,7 @@ void cuSetUp(const int maxBlocksPerKernel, const int n);
 void cuShutDown();
 void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2);
 void cuAddId(double alpha, void* elems, int n, int elemSize);
+double cuTrace(void* elems, int n, int elemSize);
 
 #ifdef __cplusplus
 } // end extern "C"

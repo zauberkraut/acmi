@@ -20,8 +20,8 @@ enum {
   MIN_CONV_ORDER = 2,
   MAX_CONV_ORDER = 4,
   DEFAULT_CONV_ORDER = 3,
-  DEFAULT_MS_LIMIT = 300000, // 5 minutes
-  MAX_MS_LIMIT = 86400000,   // 1 day
+  DEFAULT_MS_LIMIT = 0,    // no limit
+  MAX_MS_LIMIT = 86400000, // 1 day
   MAX_RAND_ELEM = SHRT_MAX,
   MAX_BLOCKS_PER_KERNEL = (1 << 16) - 1,
   DEFAULT_MAX_BLOCKS_PER_KERNEL = 40
@@ -110,7 +110,7 @@ void usage() {
         "  -p <#bits>  Set initial matrix element floating-point precision\n"
         "              (32 or 64, default: %d)\n"
         "  -e <+real>  Set inversion error limit (default: %g)\n"
-        "  -t <ms>     Set inversion time limit in ms (default: %d ms)\n"
+        "  -t <ms>     Set inversion time limit in ms (default: none)\n"
         "  -m <+real>  Set max convergence rate allowed using single-precision; prepend\n"
         "              with 'x' to use a multiple (>= 1) of the starting rate\n"
         "              (default: %s)\n"
@@ -125,7 +125,7 @@ void usage() {
         "              (default: matrix dimension, max: %d)\n"
         "  -U <path>   Output generated, uninverted matrix to path\n"
         "  -S <hex>    Set PRNG seed (not yet portable)\n\n",
-        DEFAULT_CONV_ORDER_STR, 8*DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT, DEFAULT_MS_LIMIT,
+        DEFAULT_CONV_ORDER_STR, 8*DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT,
         DEFAULT_CONV_RATE_LIMIT_STR, DEFAULT_MAX_BLOCKS_PER_KERNEL, MAX_BLOCKS_PER_KERNEL,
         MAX_RAND_ELEM);
   exit(0);

@@ -9,7 +9,7 @@ enum { MAX_RESTART_ITER = 2 };
 
 /* Quickly computes ||I - AR0|| for R0 = alpha*I. */
 static double traceErr(double alpha, Mat mA) {
-  return sqrt(MatN(mA) + 1 - 2*alpha*MatTrace(mA));
+  return sqrt(MatN(mA) + 1 - 2*alpha*trace(mA));
 }
 
 static struct timespec g_startTime;
@@ -19,6 +19,10 @@ static int msSince() {
   clock_gettime(CLOCK_MONOTONIC, &time);
   return (time.tv_sec - g_startTime.tv_sec)*1000 +
     (time.tv_nsec - g_startTime.tv_nsec)/1.e6;
+}
+
+static bool timeLeft(const int msLimit) {
+  return msLimit > 0 ? msSince() < msLimit : true;
 }
 
 /* Swaps matrix pointers. */
@@ -31,7 +35,7 @@ static void swap(Mat* mp, Mat* np) {
 /* The inversion algorithm.
    If convRateLimit < 0, |convRateLimit| specifies a multiple of the first
    measured rate to use as the limit. */
-double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
+double altmanInvert(const Mat mA, Mat* const mRp, const int convOrder,
                     const double errLimit, const int msLimit,
                     double convRateLimit, bool safeR0) {
   clock_gettime(CLOCK_MONOTONIC, &g_startTime); // start clock
@@ -56,7 +60,7 @@ double altmanInvert(const Mat mA, Mat* mRp, const int convOrder,
     err = traceErr(alpha, mA);
   }
 
-  for (int iter = 0; msSince() < msLimit; iter++) { // while time remains
+  for (int iter = 0; timeLeft(msLimit); iter++) { // while time remains
     static double prevErr = INFINITY;
 
     gemm(1, mA, mR, 0, mAR); // mAR <- AR

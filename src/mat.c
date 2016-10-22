@@ -13,7 +13,6 @@ struct Mat_ {
   size_t pitch; // bytes per row
   void* elems;  // the linear array of matrix entries
   bool dev;     // is matrix in device memory?
-  double trace; // the sum of the diagonal entries
 };
 
 static inline double ElemVal(union Elem* e, int size) {
@@ -41,7 +40,6 @@ static Mat MatEmptyNew(int n, int elemSize) {
   m->elemSize = elemSize;
   m->size = m->n2*m->elemSize;
   m->pitch = n*m->elemSize;
-  m->trace = NAN;
   return m;
 }
 
@@ -95,16 +93,6 @@ inline size_t MatSize(Mat m) { return m->size; }
 inline size_t MatPitch(Mat m) { return m->pitch; }
 inline void* MatElems(Mat m) { return m->elems; }
 inline bool MatDev(Mat m) { return m->dev; }
-
-double MatTrace(Mat m) {
-  if (isnan(m->trace)) { // compute the trace
-    m->trace = 0.;
-    for (int i = 0; i < MatN(m); i++) {
-      m->trace += MatGet(m, i, i);
-    }
-  }
-  return m->trace;
-}
 
 /* Uploads a matrix' elements to device memory, freeing its host memory. */
 void MatToDev(Mat m) {

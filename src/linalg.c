@@ -169,6 +169,22 @@ double nrm2(Mat mA) {
   return norm;
 }
 
+/* Computes the sum of the entries on the main diagonal. */
+double trace(Mat mA) {
+  double trace;
+
+  if (MatDev(mA)) {
+    trace = cuTrace(MatElems(mA), MatN(mA), MatElemSize(mA));
+  } else {
+    trace = 0.;
+    for (int i = 0; i < MatN(mA); i++) {
+      trace += MatGet(mA, i, i);
+    }
+  }
+
+  return trace;
+}
+
 double minusIdNrm2(Mat mA) {
   addId(-1, mA);
   double norm = nrm2(mA);
