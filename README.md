@@ -28,9 +28,9 @@ To run unit tests:
 For usage instructions, run (after building):  
 `acmi`
 
-To invert a 10000x10000 random, diagonally-dominant integer matrix using cuBLAS
+To invert a 10000x10000 random, diagonally-dominant integer matrix using CUDA
 without writing any matrix files, run:  
-`acmi ?10000`
+`acmi @10000 -D`
 
 Large, sparse matrices can be found [here](
 https://www.cise.ufl.edu/research/sparse/matrices/
@@ -44,10 +44,10 @@ http://math.nist.gov/MatrixMarket/mmio-c.html
 
 TODO:
   * More unit tests!
-  * OpenCL support
+  * OpenCL/Vulkan support
   * Library build
   * Fix makefile quirks
   * Sprout CLI handler out of main() and handle conflicting options
   * Portable PRNG seeding
-  * Symmetric multiplication of symmetric matrices on the first iteration
+  * Optimized multiplication of symmetric or sparse matrices during the first iteration
   * Double double support
