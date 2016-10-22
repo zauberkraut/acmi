@@ -64,14 +64,14 @@ static bool rdRandSupported() {
 }
 
 static int cstdRand16() {
-  return (int)((unsigned)rand() >> 15); // discard correlated, low-order bits
+  return (int)((unsigned)rand() >> 15); // discard correlated bits
 }
 
 /* Uses RDRAND instruction to generate high-quality random integers.
    Requires an Ivy Bridge or newer x86 CPU. Requires no seeding. */
 static int rdRand16() {
   int r = 0;
-  _rdrand16_step((uint16_t*)&r); // we assume we won't run out of entropy...
+  _rdrand16_step((uint16_t*)&r); // assume entropy suffices
   return r;
 }
 
@@ -181,13 +181,15 @@ static int drawSign(int* n) {
 }
 
 /* Generates a random, probably-invertible matrix of integers.
-   Allowing negative entries shall probably cause ill-conditioning.
+   (Certainly-invertible if diagonally-dominant). Allowing negative
+   entries shall probably cause ill-conditioning.
    TODO: replace bool cascade with binary flags
-   TODO: diagonal dominance adjustment of +1 might be swallowed for large values
+   TODO: large dominant diagonals might swallow bias of +1
    TODO: populating elements in column-major order _might_ be faster
-   TODO: 16-bit reals are choppy */
-Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
-               bool neg, bool diagDom, bool useHardwareRNG) {
+   TODO: 16-bit granularity of reals can be course */
+Mat MatNewRand(int n, int elemSize, double maxElem, bool symm,
+               bool real, bool neg, bool diagDom,
+               bool useHardwareRNG) {
   if (useHardwareRNG && !rdRandSupported()) {
     fatal("your CPU doesn't support the RDRAND instruction");
   }
@@ -206,7 +208,7 @@ Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
     }
 
     for (; col < n; col++) {
-      if (!diagDom || row != col) { // dominant diagonals are summed later
+      if (!diagDom || row != col) { // diagonals are summed later
         int r = rand16();
         double sign = neg ? drawSign(&r) : 1;
         double absElem = real ? (double)r/rMax * maxElem :
@@ -222,8 +224,10 @@ Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
 
     if (diagDom) {
       double sign = neg ? (rand16() & 1 ? 1 : -1) : 1;
-      // make diagonal strictly greater than the sum of the other row entries
-      double diag = sign * (real ? nextafter(rowSum, INFINITY) : rowSum + 1);
+      /* Make diagonal element strictly greater than the sum of the
+         other row entries. */
+      double diag = sign * (real ? nextafter(rowSum, INFINITY) :
+                                   rowSum + 1);
       MatPut(m, row, row, diag);
     }
   }

@@ -58,9 +58,8 @@ double altmanInvert(const Mat mA, Mat* const mRp,
     err = traceErr(alpha, mA);
   }
 
-  int iter, ms;
-  for (iter = 0; (ms = msSince(&start)) < msLimit || !msLimit;
-       iter++) { // while time remains
+  int iter, ms; // while time remains
+  for (iter = 0; (ms = msSince(&start)) < msLimit; iter++) {
     static double prevErr = INFINITY;
     static int prevMS = 0;
 

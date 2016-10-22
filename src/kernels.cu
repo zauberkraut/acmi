@@ -89,16 +89,11 @@ void cuSetUp(const int maxBlocksPerKernel, const int n) {
   g_threadsPerVectorBlock = iMin(maxThreadsPerBlock, n);
   g_threadsPerSweepBlock  = iMin(maxThreadsPerBlock, g_bucketsLen);
   g_threadsPerMatrixBlock = iMin(maxThreadsPerBlock, n2);
-  int threadsPerVector = g_blocksPerVector*g_threadsPerVectorBlock,
-      threadsPerMatrix = g_blocksPerMatrix*g_threadsPerMatrixBlock;
 
-  debug("max  blocks/kernel: %d\n"
-        "max threads/block : %d\n"
-        "     blocks/matrix: %d\n"
-        "    threads/matrix: %d\n"
-        "     blocks/vector: %d\n"
-        "    threads/vector: %d",
-        maxBlocksPerKernel, maxThreadsPerBlock, g_blocksPerMatrix,
+  auto threadsPerVector = g_blocksPerVector*g_threadsPerVectorBlock,
+       threadsPerMatrix = g_blocksPerMatrix*g_threadsPerMatrixBlock;
+  debug("blocks/matrix: %d, threads/matrix: %d\n"
+        "blocks/vector: %d, threads/vector: %d", g_blocksPerMatrix,
         threadsPerMatrix, g_blocksPerVector, threadsPerVector);
 }
 
