@@ -124,7 +124,7 @@ void usage() {
         "  -V <+real>  Set max element magnitude\n"
         "              (default: matrix dimension, max: %d)\n"
         "  -U <path>   Output generated, uninverted matrix to path\n"
-        "  -S <hex>    Set PRNG seed (not yet portable)\n\n",
+        "  -S <hex>    Set PRNG seed (not yet portable)\n",
         DEFAULT_CONV_ORDER_STR, 8*DEFAULT_ELEM_SIZE, DEFAULT_ERR_LIMIT,
         DEFAULT_CONV_RATE_LIMIT_STR, DEFAULT_MAX_BLOCKS_PER_KERNEL, MAX_BLOCKS_PER_KERNEL,
         MAX_RAND_ELEM);
