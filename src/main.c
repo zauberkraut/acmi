@@ -256,8 +256,8 @@ int main(int argc, char* argv[]) {
   const int matCount = convOrder < 4 ? 4 : 5;
 
   if (randDim) { // random mode
-    if (!softMode) {
-      checkDevMemEnough(randDim, elemSize, matCount);
+    if (!softMode && !checkDevMemEnough(randDim, elemSize, matCount)) {
+      exit(1); // not enough dev RAM for inversion
     }
 
     if (useHardwareRNG) {

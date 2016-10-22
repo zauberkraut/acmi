@@ -46,13 +46,15 @@ inline double mibibytes(size_t size) {
   return (double)size/(1 << 20);
 }
 
-void checkDevMemEnough(int n, int elemSize, int matCount) {
+bool checkDevMemEnough(int n, int elemSize, int matCount) {
   const size_t totalSize = (size_t)elemSize*n*n*matCount;
   const size_t available = cuMemAvail();
   if (totalSize > available) {
-    fatal("%ld bytes device memory needed; only %ld available", totalSize,
-          available);
+    warn("%ld bytes device memory needed; only %ld available", totalSize,
+         available);
+    return false;
   }
+  return true;
 }
 
 /* Tests for CPU support of the RDRAND instruction. */
@@ -107,8 +109,8 @@ Mat MatLoad(const char* path, int elemSize, int matCount) {
   if (n > MAX_MAT_DIM) {
     fatal("matrix exceeds maximum-allowed dimension of %d", MAX_MAT_DIM);
   }
-  if (matCount) {
-    checkDevMemEnough(n, elemSize, matCount);
+  if (matCount && !checkDevMemEnough(n, elemSize, matCount)) {
+    exit(1); // not enough device RAM to invert this matrix
   }
 
   int64_t n2 = (int64_t)n*n;

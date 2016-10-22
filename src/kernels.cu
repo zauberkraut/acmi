@@ -15,8 +15,8 @@ int g_blocksPerVector, g_threadsPerVectorBlock,
 double* g_buckets;
 int g_bucketsLen;
 
-/* Copies elements from one nxn matrix to another, converting them to the
-   precision of the destination matrix. */
+/* Copies elements from one nxn matrix to another, converting them
+   to the precision of the destination matrix. */
 template<typename T, typename U> __global__ void
 kernCopy(T* dst, const U* src, const int64_t n2) {
   const int offset = blockIdx.x*blockDim.x + threadIdx.x;
@@ -41,6 +41,7 @@ kernAddId(const T alpha, T* a, const int n) {
   }
 }
 
+/* Sweeps sums of matrix elements into buckets. */
 template<typename T> __global__ void
 kernSweepSums(const T* a, const int64_t len, const int pitch,
               T* const buckets, const int bucketsLen) {
@@ -65,7 +66,7 @@ extern "C" {
 /* Sets up kernel parameters. */
 void cuSetUp(const int maxBlocksPerKernel, const int n) {
   cudaDeviceProp prop;
-  cudaGetDeviceProperties(&prop, 0); // assumes usage of the first device
+  cudaGetDeviceProperties(&prop, 0); // assume using first device
   debug("setting up kernels on %s", prop.name);
   if (maxBlocksPerKernel > prop.maxGridSize[0]) {
     fatal("max blocks supported: %d", prop.maxGridSize[0]);
@@ -76,35 +77,35 @@ void cuSetUp(const int maxBlocksPerKernel, const int n) {
   g_bucketsLen = (n + SWEEP_FACTOR - 1)/SWEEP_FACTOR;
   g_buckets = (double*)cuMalloc(sizeof(double)*g_bucketsLen);
 
-  g_blocksPerVector = (n  + maxThreadsPerBlock - 1) / maxThreadsPerBlock;
+  g_blocksPerVector = (n  + maxThreadsPerBlock - 1) /
+                      maxThreadsPerBlock;
   g_blocksPerVector = iMin(maxBlocksPerKernel, g_blocksPerVector);
   g_blocksPerSweep  = (g_bucketsLen  + maxThreadsPerBlock - 1) /
                       maxThreadsPerBlock;
   g_blocksPerSweep  = iMin(maxBlocksPerKernel, g_blocksPerSweep);
-  g_blocksPerMatrix = (n2 + maxThreadsPerBlock - 1) / maxThreadsPerBlock;
+  g_blocksPerMatrix = (n2 + maxThreadsPerBlock - 1) /
+                      maxThreadsPerBlock;
   g_blocksPerMatrix = iMin(maxBlocksPerKernel, g_blocksPerMatrix);
   g_threadsPerVectorBlock = iMin(maxThreadsPerBlock, n);
   g_threadsPerSweepBlock  = iMin(maxThreadsPerBlock, g_bucketsLen);
   g_threadsPerMatrixBlock = iMin(maxThreadsPerBlock, n2);
-  const int threadsPerVector = g_blocksPerVector*g_threadsPerVectorBlock,
-            threadsPerSweep  = g_blocksPerSweep*g_threadsPerSweepBlock,
-            threadsPerMatrix = g_blocksPerMatrix*g_threadsPerMatrixBlock;
+  int threadsPerVector = g_blocksPerVector*g_threadsPerVectorBlock,
+      threadsPerMatrix = g_blocksPerMatrix*g_threadsPerMatrixBlock;
 
   debug("max  blocks/kernel: %d\n"
         "max threads/block : %d\n"
         "     blocks/matrix: %d\n"
         "    threads/matrix: %d\n"
         "     blocks/vector: %d\n"
-        "    threads/vector: %d\n"
-        "     blocks/sweep : %d\n"
-        "    threads/sweep : %d\n",
+        "    threads/vector: %d",
         maxBlocksPerKernel, maxThreadsPerBlock, g_blocksPerMatrix,
-        threadsPerMatrix, g_blocksPerVector, threadsPerVector,
-        g_blocksPerSweep, threadsPerSweep);
+        threadsPerMatrix, g_blocksPerVector, threadsPerVector);
 }
 
+/* Cleans up kernel environment. */
 void cuShutDown() {
   debug("shutting down kernels");
+  cuFree(g_buckets);
 }
 
 /* Doubles matrix precision. */
@@ -113,7 +114,7 @@ void cuPromote(void* dst, void* src, int srcElemSize, int64_t n2) {
     ((double*)dst, (const float*)src, n2);
 }
 
-/* Adds alpha*I to the nxn matrix backed by the device array elems. */
+/* Adds alpha*I to the matrix backed by the device array elems. */
 void cuAddId(double alpha, void* elems, int n, int elemSize) {
   switch (elemSize) {
   case 4:
@@ -127,7 +128,7 @@ void cuAddId(double alpha, void* elems, int n, int elemSize) {
   }
 }
 
-// collect the partial sums
+/* Computes a matrix trace by sweeping sums. */
 double cuTrace(void* elems, int n, int elemSize) {
   const int64_t n2 = n*n;
   double trace = NAN;

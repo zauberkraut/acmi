@@ -31,7 +31,7 @@ void warn(const char* msg, ...);
 void fatal(const char* msg, ...);
 int iMin(int a, int b);
 double mibibytes(size_t size);
-void checkDevMemEnough(int n, int elemSize, int matCount);
+bool checkDevMemEnough(int n, int elemSize, int matCount);
 Mat MatLoad(const char* path, int elemSize, int matCount);
 Mat MatNewRand(int n, int elemSize, double maxElem, bool symm, bool real,
                bool neg, bool diagDom, bool useHardwareRNG);

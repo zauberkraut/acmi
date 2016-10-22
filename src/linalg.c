@@ -1,6 +1,7 @@
 /* linalg.c
  
-   ACMI linear algebraic operations implemented using (cu)BLAS and CUDA kernels.
+   ACMI linear algebraic operations implemented using (cu)BLAS and
+   CUDA kernels.
 */
 
 #include <cublas_v2.h>
@@ -35,18 +36,21 @@ void transpose(double alpha, Mat mA, Mat mT) {
   case 4:
     if (dev) {
       float alpha32 = alpha;
-      cublasSgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &alpha32,
-                  a, n, (float*)&beta, t, n, t, n);
+      cublasSgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n,
+                  &alpha32, a, n, (float*)&beta, t, n, t, n);
     } else {
-      cblas_somatcopy(CblasColMajor, CblasTrans, n, n, alpha, a, n, t, n);
+      cblas_somatcopy(CblasColMajor, CblasTrans, n, n, alpha, a, n,
+                      t, n);
     }
     break;
+
   case 8:
     if (dev) {
-      cublasDgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n, &alpha,
-                  a, n, &beta, t, n, t, n);
+      cublasDgeam(g_cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, n, n,
+                  &alpha, a, n, &beta, t, n, t, n);
     } else {
-      cblas_domatcopy(CblasColMajor, CblasTrans, n, n, alpha, a, n, t, n);
+      cblas_domatcopy(CblasColMajor, CblasTrans, n, n, alpha, a, n,
+                      t, n);
     }
     break;
   }
@@ -64,21 +68,21 @@ void gemm(double alpha, Mat mA, Mat mB, double beta, Mat mC) {
   case 4:
     if (dev) {
       float alpha32 = alpha, beta32 = beta;
-      cublasSgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha32,
-                  a, n, b, n, &beta32, c, n);
+      cublasSgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n,
+                  &alpha32, a, n, b, n, &beta32, c, n);
     } else {
-      cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n, n, alpha,
-                  a, n, b, n, beta, c, n);
+      cblas_sgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n,
+                  n, alpha, a, n, b, n, beta, c, n);
     }
     break;
 
   case 8:
     if (dev) {
-      cublasDgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n, &alpha,
-                  a, n, b, n, &beta, c, n);
+      cublasDgemm(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, n,
+                  &alpha, a, n, b, n, &beta, c, n);
     } else {
-      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n, n, alpha,
-                  a, n, b, n, beta, c, n);
+      cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans, n, n,
+                  n, alpha, a, n, b, n, beta, c, n);
     }
     break;
   }
@@ -98,8 +102,8 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
   case 4:
     if (dev) {
       float alpha32 = alpha, beta32 = beta;
-      cublasSgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha32,
-                  a, n, &beta32, b, n, c, n);
+      cublasSgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n,
+                  &alpha32, a, n, &beta32, b, n, c, n);
     } else {
       if (b == c) {
         cblas_sscal(n2, beta, c, 1);
@@ -113,8 +117,8 @@ void geam(double alpha, Mat mA, double beta, Mat mB, Mat mC) {
 
   case 8:
     if (dev) {
-      cublasDgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n, &alpha,
-                  a, n, &beta, b, n, c, n);
+      cublasDgeam(g_cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, n, n,
+                  &alpha, a, n, &beta, b, n, c, n);
     } else {
       if (b == c) {
         cblas_dscal(n2, beta, c, 1);
@@ -133,8 +137,9 @@ void addId(double alpha, Mat mA) {
   if (MatDev(mA)) {
     cuAddId(alpha, MatElems(mA), MatN(mA), MatElemSize(mA));
   } else for (int diag = 0; diag < MatN(mA); diag++) {
-    /* This could be marginally sped up using *axpy with a 1xn vector of ones
-       and a stride of n + 1 over the matrix, but it's not worth the trouble. */
+    /* This could be marginally sped up using *axpy with a 1xn
+       vector of ones and a stride of n + 1 over the matrix, but
+       it's not worth the trouble. */
     MatPut(mA, diag, diag, alpha + MatGet(mA, diag, diag));
   }
 }
@@ -185,8 +190,9 @@ double trace(Mat mA) {
   return trace;
 }
 
+/* Computes the norm of (I - A). */
 double minusIdNrm2(Mat mA) {
-  addId(-1, mA);
+  addId(-1, mA); // sort of a hack, but it works very well
   double norm = nrm2(mA);
   addId(1, mA);
   return norm;

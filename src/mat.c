@@ -3,7 +3,6 @@
    ACMI matrix type with functions. */
 
 #include "acmi.h"
-#include "mmio.h"
 
 struct Mat_ {
   int n;        // square matrix dimension
