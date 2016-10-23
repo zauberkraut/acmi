@@ -58,8 +58,8 @@ double altmanInvert(const Mat mA, Mat* const mRp,
     err = traceErr(alpha, mA);
   }
 
-  int iter, ms; // while time remains
-  for (iter = 0; (ms = msSince(&start)) < msLimit; iter++) {
+  int iter = 0, totalIters = 0, ms; // while time remains
+  for (; (ms = msSince(&start)) < msLimit; iter++, totalIters++) {
     static double prevErr = INFINITY;
     static int prevMS = 0;
 
@@ -88,7 +88,7 @@ double altmanInvert(const Mat mA, Mat* const mRp,
       safeR0 = true;
       transpose(alpha*alpha, mA, mR);
       prevErr = INFINITY;
-      iter = -1;
+      iter = -1; totalIters--;
 
       continue;
     } else if (MatElemSize(mA) < MAX_ELEM_SIZE && convRateLimit > 0
@@ -100,7 +100,6 @@ double altmanInvert(const Mat mA, Mat* const mRp,
         debug("not enough device RAM; halting");
         if (err >= prevErr) { // back up if last iter were better
           swap(&mX, &mR);
-          iter--;
         }
         break;
       }
@@ -116,7 +115,7 @@ double altmanInvert(const Mat mA, Mat* const mRp,
       if (err >= tmp) {   // if we've fully diverged...
         debug("backing up to reduce error");
         swap(&mX, &mR);
-        iter -= 2;
+        iter -= 2; totalIters--;
         continue; // recompute AR
       }
     } else if (err >= prevErr || !isfinite(err)) {
@@ -166,8 +165,8 @@ double altmanInvert(const Mat mA, Mat* const mRp,
   ms = msSince(&start);
   int minutes = ms/60000;
   double seconds = (ms - minutes*60000)/1000.;
-  debug("inversion halted in %d iterations after %dm%.3fs", iter,
-        minutes, seconds);
+  debug("inversion halted in %d iterations after %dm%.3fs",
+        totalIters, minutes, seconds);
   if (err > errLimit) {
     warn("failed to converge to error < %g within %d ms", errLimit,
          msLimit);
