@@ -53,3 +53,4 @@ TODO:
   * Optimized multiplication of symmetric or sparse matrices during the first iteration
   * Double double support
   * Increase output file precision
+  * Fix GPU iteration time measurement to no longer stride across iterations
