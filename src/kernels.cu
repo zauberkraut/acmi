@@ -6,7 +6,7 @@
 
 namespace {
 
-enum { SWEEP_FACTOR = 4 };
+enum { SWEEP_FACTOR = 16 };
 
 /* Kernel parameters. */
 int g_blocksPerVector, g_threadsPerVectorBlock,
