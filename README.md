@@ -44,6 +44,7 @@ http://math.nist.gov/MatrixMarket/mmio-c.html
 
 TODO:
   * More unit tests!
+  * Make reported iteration count consistent
   * OpenCL/Vulkan support
   * Library build
   * Fix makefile quirks
