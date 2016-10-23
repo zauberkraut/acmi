@@ -4,6 +4,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <float.h>
 #include <getopt.h>
 #include <libgen.h>
 #include <limits.h>
@@ -31,7 +32,7 @@ static const double
   DEFAULT_ERR_LIMIT = 1e-5,
   #define MIN_CONV_RATE 1e-5
   MIN_CONV_RATE_FACTOR = 1. + MIN_CONV_RATE,
-  MAX_CONV_RATE = 1e6,
+  MAX_CONV_RATE = DBL_MAX,
   DEFAULT_CONV_RATE_LIMIT = 1;
 
 static const char* DEFAULT_CONV_ORDER_STR = "cubic";
@@ -201,7 +202,7 @@ int main(int argc, char* argv[]) {
         i = -1;
         d = MIN_CONV_RATE_FACTOR;
       }
-      convRateLimit = i*parseDouble(d, MAX_CONV_RATE + 1,
+      convRateLimit = i*parseDouble(d, MAX_CONV_RATE,
                                     "invalid convergence rate limit");
       break;
     case 'b':
