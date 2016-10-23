@@ -318,7 +318,9 @@ int main(int argc, char* argv[]) {
   altmanInvert(mA, &mR, convOrder, errLimit, msLimit, convRateLimit, safeR0);
 
   if (outPath) {   // optionally write inverted matrix
-    MatToHost(mR); // if inverse is on the GPU, download it
+    if (!softMode) {
+      MatToHost(mR); // if inverse is on the GPU, download it
+    }
     MatWrite(mR, outPath);
     free(outPath);
   }
