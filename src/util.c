@@ -70,9 +70,19 @@ static int cstdRand16() {
 /* Uses RDRAND instruction to generate high-quality random integers.
    Requires an Ivy Bridge or newer x86 CPU. Requires no seeding. */
 static int rdRand16() {
-  int r = 0;
-  _rdrand16_step((uint16_t*)&r); // assume entropy suffices
-  return r;
+  static int n = 0;
+  static unsigned long long r = 0;
+
+  if (!n) {
+    _rdrand64_step(&r); // assume entropy suffices
+    n = 4;
+  }
+
+  int s = (int)(r & 0xffff);
+  r >>= 16;
+  n--;
+
+  return s;
 }
 
 /* Loads a matrix of the given precision from a file. */
