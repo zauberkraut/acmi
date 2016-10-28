@@ -1,8 +1,7 @@
 /* linalg.c
  
    ACMI linear algebraic operations implemented using (cu)BLAS and
-   CUDA kernels.
-*/
+   CUDA kernels. */
 
 #include <cublas_v2.h>
 #include <openblas/cblas.h>
