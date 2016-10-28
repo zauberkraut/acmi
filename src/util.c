@@ -74,6 +74,8 @@ static int rdRand16() {
   static unsigned long long r = 0;
 
   if (!n) {
+    /* RDRAND always pulls 64 bits, so splitting each term into four
+       16-bit numbers is far faster. */
     _rdrand64_step(&r); // assume entropy suffices
     n = 4;
   }
