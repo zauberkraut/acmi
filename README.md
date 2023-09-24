@@ -5,6 +5,8 @@ ACMI implements M. Altman's cubically-convergent, iterative algorithm to compute
 matrix inverses. GPU-hosted computation is currently supported using CUDA. ACMI
 is being developed on the Pascal architecture.
 
+The research behind this work may be found [here](https://digital.auraria.edu/work/ns/054c523a-c1fb-419f-aa4b-6dccbff98f7a).
+
 ---
 
 Dependencies:
